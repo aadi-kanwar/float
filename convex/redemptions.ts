@@ -18,6 +18,7 @@ import { notify } from "./lib/account";
 import { writeAudit } from "./lib/audit";
 import { appError } from "./lib/errors";
 import { adminMutation, adminQuery, residentMutation, residentQuery } from "./lib/functions";
+import { inScope, residentsInScope } from "./lib/org";
 import { usedInPeriod } from "./lib/perks";
 import { pointsBalance } from "./lib/points";
 import { currentSettings } from "./lib/settings";
@@ -215,8 +216,11 @@ export const queue = adminQuery({
     residentId: v.optional(v.id("residents")),
     from: v.optional(v.string()),
     to: v.optional(v.string()),
+    propertyId: v.optional(v.id("properties")),
   },
   handler: async (ctx, args) => {
+    const scope = await residentsInScope(ctx, args.propertyId);
+    if (scope !== null && scope.size === 0) return { page: [], isDone: true, continueCursor: "" };
     const base = args.status
       ? ctx.db.query("redemptions").withIndex("by_status_createdAt", (q) => q.eq("status", args.status!))
       : args.perkId
@@ -230,6 +234,7 @@ export const queue = adminQuery({
         args.residentId ? q.eq(q.field("residentId"), args.residentId) : true,
         args.from ? q.gte(q.field("createdAt"), Date.parse(`${args.from}T00:00:00+05:30`)) : true,
         args.to ? q.lt(q.field("createdAt"), Date.parse(`${args.to}T00:00:00+05:30`) + 86_400_000) : true,
+        scope === null ? true : q.or(...[...scope].map((id) => q.eq(q.field("residentId"), id as Id<"residents">))),
       ),
     );
     const page = await filtered.order(args.status === "requested" ? "asc" : "desc").paginate(args.paginationOpts);
@@ -244,6 +249,9 @@ export const queue = adminQuery({
 
 /** The badge: how many are waiting at Requested. */
 export const newCount = adminQuery({
-  args: {},
-  handler: async (ctx) => (await ctx.db.query("redemptions").withIndex("by_status_createdAt", (q) => q.eq("status", "requested")).collect()).length,
+  args: { propertyId: v.optional(v.id("properties")) },
+  handler: async (ctx, { propertyId }) => {
+    const scope = await residentsInScope(ctx, propertyId);
+    return (await ctx.db.query("redemptions").withIndex("by_status_createdAt", (q) => q.eq("status", "requested")).collect()).filter((r) => inScope(scope, r.residentId)).length;
+  },
 });

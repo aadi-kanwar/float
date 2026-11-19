@@ -3,6 +3,7 @@
 import { CircleAlert, CircleCheck, CircleDot, Clock } from "lucide-react";
 import Link from "next/link";
 import { api } from "@convex/_generated/api";
+import { usePropertyScope } from "@/components/app/property-scope";
 import { MoneyCalendar } from "@/components/admin/money-calendar";
 import { Card, CardBody } from "@/components/ui/card";
 import { PageHeader } from "@/components/ui/page-header";
@@ -17,10 +18,11 @@ const count = (n: number) => String(n);
 
 /** Admin home: the money at a glance, what's waiting, and the month's calendar. Updates live. */
 export default function Overview() {
-  const o = useQuery(api.money.overview, {});
+  const { arg, current } = usePropertyScope();
+  const o = useQuery(api.money.overview, arg);
   return (
     <>
-      <PageHeader title="Overview" />
+      <PageHeader title="Overview" description={current ? current.name : undefined} />
       {o === undefined ? (
         <LoadingState rows={4} />
       ) : (

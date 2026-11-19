@@ -156,7 +156,7 @@ describe("hub sync and export", () => {
   test("sync of a PG links it by name; export lists people and PGs", async () => {
     const t = await setupTest();
     const admin = await createAdmin(t);
-    await admin.as.mutation(api.properties.add, { name: "Livoza Indiranagar" });
+    await admin.as.mutation(api.organization.create, { name: "Livoza", propertyName: "Livoza Indiranagar" });
     const res = await post(t, "/sso/sync", await sign({ aud: "float-sync", sub: "hubPg9", kind: "property", property: { id: "hubPg9", name: "Livoza Indiranagar", organizationName: "Livoza" } }));
     expect(res.status).toBe(200);
     const pgs = await admin.as.query(api.properties.list, {});

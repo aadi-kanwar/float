@@ -17,6 +17,7 @@ import {
 import Link from "next/link";
 import { useState } from "react";
 import { api } from "@convex/_generated/api";
+import { usePropertyScope } from "@/components/app/property-scope";
 import type { CalendarKind } from "@convex/money";
 import { Button } from "@/components/ui/button";
 import { Card, CardBody } from "@/components/ui/card";
@@ -57,7 +58,8 @@ export function MoneyCalendar() {
   const today = todayIn();
   const [month, setMonth] = useState(today.slice(0, 7));
   const [day, setDay] = useState<string | null>(today);
-  const data = useQuery(api.money.calendar, { month });
+  const { arg } = usePropertyScope();
+  const data = useQuery(api.money.calendar, { month, ...arg });
   const byDay = new Map<string, NonNullable<typeof data>["events"]>();
   for (const e of data?.events ?? []) byDay.set(e.date, [...(byDay.get(e.date) ?? []), e]);
   const selected = day && day.startsWith(month) ? (byDay.get(day) ?? []) : [];

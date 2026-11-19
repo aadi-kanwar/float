@@ -18,6 +18,7 @@ import { writeAudit } from "./lib/audit";
 import { appError } from "./lib/errors";
 import { adminMutation, adminQuery, residentMutation, residentQuery } from "./lib/functions";
 import { drawFeePaise, formatPaise, rupeesToPaise } from "./lib/money";
+import { inScope, residentsInScope } from "./lib/org";
 import { currentSettings } from "./lib/settings";
 import { currentTerms } from "./lib/terms";
 
@@ -167,8 +168,12 @@ function publicDraw(d: Doc<"drawRequests">) {
 
 /** The queue: requested and approved (waiting to be sent), oldest first; or one status. */
 export const queue = adminQuery({
-  args: { status: v.optional(v.union(v.literal("waiting"), v.literal("disbursed"), v.literal("rejected"), v.literal("cancelled"))) },
-  handler: async (ctx, { status = "waiting" }) => {
+  args: {
+    status: v.optional(v.union(v.literal("waiting"), v.literal("disbursed"), v.literal("rejected"), v.literal("cancelled"))),
+    propertyId: v.optional(v.id("properties")),
+  },
+  handler: async (ctx, { status = "waiting", propertyId }) => {
+    const scope = await residentsInScope(ctx, propertyId);
     const rows =
       status === "waiting"
         ? [
@@ -181,7 +186,7 @@ export const queue = adminQuery({
             .order("desc")
             .take(100);
     const out = [];
-    for (const d of rows) {
+    for (const d of rows.filter((x) => inScope(scope, x.residentId))) {
       const r = await ctx.db.get(d.residentId);
       out.push({ ...publicDraw(d), residentId: d.residentId, residentName: r?.name ?? "Unknown", roomNumber: r?.roomNumber ?? null, phone: r?.phone ?? "" });
     }

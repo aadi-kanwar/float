@@ -19,6 +19,7 @@ import { afterCredit } from "./lib/rewards";
 import { currentSettings } from "./lib/settings";
 import { DAY_MS, istDate, istMonth, istStartOfDay, shiftMonth } from "./lib/time";
 import { toRows } from "./lib/account";
+import { inScope, residentsInScope } from "./lib/org";
 
 function headline(s: Summary) {
   return {
@@ -292,8 +293,9 @@ export const markAllRead = residentMutation({
 // ---- Admin overview --------------------------------------------------------
 
 export const overview = adminQuery({
-  args: {},
-  handler: async (ctx) => {
+  args: { propertyId: v.optional(v.id("properties")) },
+  handler: async (ctx, { propertyId }) => {
+    const scope = await residentsInScope(ctx, propertyId);
     const settings = await currentSettings(ctx);
     const now = Date.now();
     const month = istMonth(now);
@@ -304,7 +306,7 @@ export const overview = adminQuery({
     let pendingDraws = 0;
     let available = 0;
     const statusCounts: Record<string, number> = { open: 0, paid_early: 0, paid_on_time: 0, paid_late: 0, overdue: 0 };
-    const residents = await ctx.db.query("residents").collect();
+    const residents = (await ctx.db.query("residents").collect()).filter((r) => inScope(scope, r._id));
     for (const r of residents) {
       const s = await accountSummary(ctx, r, settings, now);
       outstanding += s.outstandingPaise;
@@ -326,7 +328,7 @@ export const overview = adminQuery({
     const reversals = await ctx.db.query("ledgerEntries").withIndex("by_type_createdAt", (q) => q.eq("type", "reversal")).collect();
     const reversed = new Set<string>(reversals.map((e) => e.reversesEntryId as string));
     for (const e of recent) {
-      if (reversed.has(e._id) || e.type === "reversal") continue;
+      if (reversed.has(e._id) || e.type === "reversal" || !inScope(scope, e.residentId)) continue;
       const bucket = series.get(istMonth(e.effectiveAt));
       if (!bucket) continue;
       if (e.type === "draw") bucket.drawnPaise += e.amountPaise;
@@ -336,10 +338,11 @@ export const overview = adminQuery({
     }
     const thisMonth = series.get(month)!;
 
-    const drawsPending = (await ctx.db.query("drawRequests").withIndex("by_status_requestedAt", (q) => q.eq("status", "requested")).collect()).length;
-    const drawsToSend = (await ctx.db.query("drawRequests").withIndex("by_status_requestedAt", (q) => q.eq("status", "approved")).collect()).length;
-    const repaymentsPending = (await ctx.db.query("repaymentClaims").withIndex("by_status_submittedAt", (q) => q.eq("status", "pending")).collect()).length;
-    const redemptionsPending = (await ctx.db.query("redemptions").withIndex("by_status_createdAt", (q) => q.eq("status", "requested")).collect()).length;
+    const mine = <T extends { residentId: string }>(rows: T[]) => rows.filter((r) => inScope(scope, r.residentId)).length;
+    const drawsPending = mine(await ctx.db.query("drawRequests").withIndex("by_status_requestedAt", (q) => q.eq("status", "requested")).collect());
+    const drawsToSend = mine(await ctx.db.query("drawRequests").withIndex("by_status_requestedAt", (q) => q.eq("status", "approved")).collect());
+    const repaymentsPending = mine(await ctx.db.query("repaymentClaims").withIndex("by_status_submittedAt", (q) => q.eq("status", "pending")).collect());
+    const redemptionsPending = mine(await ctx.db.query("redemptions").withIndex("by_status_createdAt", (q) => q.eq("status", "requested")).collect());
     return {
       redemptionsPending,
       residents: residents.filter((r) => r.status === "active").length,
@@ -378,8 +381,9 @@ export type CalendarKind =
  * deadlines, late fees, new residents (and perks, once the store exists).
  */
 export const calendar = adminQuery({
-  args: { month: v.string() },
-  handler: async (ctx, { month }) => {
+  args: { month: v.string(), propertyId: v.optional(v.id("properties")) },
+  handler: async (ctx, { month, propertyId }) => {
+    const scope = await residentsInScope(ctx, propertyId);
     if (!/^\d{4}-\d{2}$/.test(month)) throw appError("INVALID_INPUT");
     const start = istStartOfDay(`${month}-01`);
     const end = istStartOfDay(`${shiftMonth(month, 1)}-01`);
@@ -402,7 +406,7 @@ export const calendar = adminQuery({
       .collect();
     const lateByDay = new Map<string, { count: number; amount: number }>();
     for (const e of rows) {
-      if (e.effectiveAt < start || e.effectiveAt >= end || reversed.has(e._id)) continue;
+      if (e.effectiveAt < start || e.effectiveAt >= end || reversed.has(e._id) || !inScope(scope, e.residentId)) continue;
       if (e.type === "draw") await push("draw_sent", e.effectiveAt, e.residentId, e.amountPaise, "Money sent");
       else if (e.type === "repayment") await push("payment", e.effectiveAt, e.residentId, e.amountPaise, "Payment");
       else if (e.type === "depositAdjustment") await push("deposit_settled", e.effectiveAt, e.residentId, e.amountPaise, "Settled from deposit");
@@ -420,16 +424,16 @@ export const calendar = adminQuery({
         .query("drawRequests")
         .withIndex("by_status_requestedAt", (q) => q.eq("status", status).gte("requestedAt", start).lt("requestedAt", end))
         .collect();
-      for (const d of asked) await push("draw_asked", d.requestedAt, d.residentId, d.amountPaise, "Draw asked");
+      for (const d of asked.filter((x) => inScope(scope, x.residentId))) await push("draw_asked", d.requestedAt, d.residentId, d.amountPaise, "Draw asked");
     }
 
     // Statements made this month, and deadlines falling in this month.
-    const made = await ctx.db.query("statements").withIndex("by_month", (q) => q.eq("month", month)).collect();
+    const made = (await ctx.db.query("statements").withIndex("by_month", (q) => q.eq("month", month)).collect()).filter((s) => inScope(scope, s.residentId));
     if (made.length > 0) {
       const at = Math.min(...made.map((s) => s.generatedAt));
       await push("statement", at, null, made.reduce((sum, s) => sum + s.totalDuePaise, 0), `${made.length} ${made.length === 1 ? "statement" : "statements"} made`);
     }
-    const dueHere = await ctx.db.query("statements").withIndex("by_month", (q) => q.eq("month", shiftMonth(month, -1))).collect();
+    const dueHere = (await ctx.db.query("statements").withIndex("by_month", (q) => q.eq("month", shiftMonth(month, -1))).collect()).filter((s) => inScope(scope, s.residentId));
     if (dueHere.length > 0)
       await push("due", dueHere[0].dueAt, null, dueHere.reduce((sum, s) => sum + s.totalDuePaise, 0), `Deadline for ${dueHere.length} ${dueHere.length === 1 ? "statement" : "statements"}`, dueHere[0].dueDate);
     else {
@@ -440,13 +444,13 @@ export const calendar = adminQuery({
     }
 
     for (const r of await ctx.db.query("residents").collect())
-      if (r.createdAt >= start && r.createdAt < end) await push("joined", r.createdAt, r._id, null, "Resident added");
+      if (r.createdAt >= start && r.createdAt < end && inScope(scope, r._id)) await push("joined", r.createdAt, r._id, null, "Resident added");
 
     const redeemed = await ctx.db
       .query("redemptions")
       .withIndex("by_createdAt", (q) => q.gte("createdAt", start).lt("createdAt", end))
       .collect();
-    for (const r of redeemed) await push("perk", r.createdAt, r.residentId, null, `Perk: ${r.perkTitle}`);
+    for (const r of redeemed.filter((x) => inScope(scope, x.residentId))) await push("perk", r.createdAt, r.residentId, null, `Perk: ${r.perkTitle}`);
 
     events.sort((a, b) => a.at - b.at);
     return { month, events };

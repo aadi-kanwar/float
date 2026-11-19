@@ -5,6 +5,7 @@ import { Check, X } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
 import { api } from "@convex/_generated/api";
+import { usePropertyScope } from "@/components/app/property-scope";
 import type { Id } from "@convex/_generated/dataModel";
 import { ClaimBadge } from "@/components/money/bits";
 import { Button } from "@/components/ui/button";
@@ -26,7 +27,8 @@ type Tab = "pending" | "confirmed" | "rejected";
 
 export default function RepaymentsPage() {
   const [tab, setTab] = useState<Tab>("pending");
-  const rows = useQuery(api.repayments.queue, { status: tab });
+  const { arg } = usePropertyScope();
+  const rows = useQuery(api.repayments.queue, { status: tab, ...arg });
   const confirm = useMutation(api.repayments.confirm);
   const [busy, setBusy] = useState<string | null>(null);
   return (

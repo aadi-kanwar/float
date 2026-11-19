@@ -40,14 +40,29 @@ export default defineSchema({
     .index("by_jti", ["jti"])
     .index("by_usedAt", ["usedAt"]),
 
-  /** The PGs. Added here or by the Livoza Hub's sync (which links them by id). */
+  /**
+   * Organisation → properties, as in Dine, Staff and Crate. Float runs ONE
+   * organisation: the first admin names it with its first property, or the
+   * Livoza Hub's sync creates it (with the hub's organisation name).
+   */
+  organizations: defineTable({
+    name: v.string(),
+    status: v.union(v.literal("active"), v.literal("archived")),
+    createdBy: v.optional(v.id("users")),
+    createdAt: v.number(),
+  }),
+
+  /** The PGs. Added in Settings or by the Livoza Hub's sync (which links them by id). */
   properties: defineTable({
-    name: v.string(), // unique (case-insensitive)
+    /** Always set for new rows (older test rows may lack it). */
+    organizationId: v.optional(v.id("organizations")),
+    name: v.string(), // unique within the organisation (case-insensitive)
     status: v.union(v.literal("active"), v.literal("archived")),
     createdAt: v.number(),
     hubPropertyId: v.optional(v.string()),
   })
     .index("by_status", ["status"])
+    .index("by_org_status", ["organizationId", "status"])
     .index("by_hubPropertyId", ["hubPropertyId"]),
 
   // Convex Auth's users table, plus the account's role.

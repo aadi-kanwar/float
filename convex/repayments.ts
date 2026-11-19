@@ -16,6 +16,7 @@ import { appError } from "./lib/errors";
 import { adminMutation, adminQuery, residentMutation, residentQuery } from "./lib/functions";
 import { formatPaise, rupeesToPaise } from "./lib/money";
 import { afterCredit } from "./lib/rewards";
+import { inScope, residentsInScope } from "./lib/org";
 import { currentSettings } from "./lib/settings";
 
 const cleanText = (text: string | undefined, max: number) => {
@@ -91,15 +92,16 @@ function publicClaim(c: Doc<"repaymentClaims">) {
 // ---- Admin -----------------------------------------------------------------
 
 export const queue = adminQuery({
-  args: { status: v.optional(v.union(v.literal("pending"), v.literal("confirmed"), v.literal("rejected"))) },
-  handler: async (ctx, { status = "pending" }) => {
+  args: { status: v.optional(v.union(v.literal("pending"), v.literal("confirmed"), v.literal("rejected"))), propertyId: v.optional(v.id("properties")) },
+  handler: async (ctx, { status = "pending", propertyId }) => {
+    const scope = await residentsInScope(ctx, propertyId);
     const rows = await ctx.db
       .query("repaymentClaims")
       .withIndex("by_status_submittedAt", (q) => q.eq("status", status))
       .order(status === "pending" ? "asc" : "desc")
       .take(200);
     const out = [];
-    for (const c of rows) {
+    for (const c of rows.filter((x) => inScope(scope, x.residentId))) {
       const r = await ctx.db.get(c.residentId);
       out.push({ ...publicClaim(c), residentId: c.residentId, residentName: r?.name ?? "Unknown", roomNumber: r?.roomNumber ?? null });
     }

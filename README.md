@@ -75,6 +75,16 @@ no access to Float.
   (id `float`, appUrl, ssoPath `/sso`, backendUrl = Float's
   `https://<deployment>.convex.site`, roles admin→admin, resident→resident).
 
+- **Organisation and properties (as in Dine, Staff and Crate):** one
+  organisation with its properties (PGs). The first admin names it with its
+  first property, unless the Livoza Hub's sync already created it (with the
+  hub's organisation name). Properties are added and renamed in Settings.
+  With more than one, the admin header has a picker: **All properties** or
+  one, remembered on that device; Overview, calendar, Residents, Draws,
+  Repayments, Statements, Points ledger, Redemptions and CSV export follow
+  it. Money rules, points and the Perk Store are organisation-wide. Each
+  resident belongs to one property.
+
 ## Points rules (as built)
 
 - Earned only on principal repaid, for a statement paid in full by its

@@ -4,7 +4,9 @@ import { useRouter } from "next/navigation";
 import { useEffect } from "react";
 import { api } from "@convex/_generated/api";
 import { useQuery } from "@/lib/convex";
+import { OrganizationSetup } from "@/components/admin/organization-setup";
 import { AppFrame } from "@/components/app/app-frame";
+import { PropertyPicker, PropertyScopeProvider } from "@/components/app/property-scope";
 import { Brand } from "@/components/app/brand";
 import {
   destinationFor,
@@ -49,8 +51,10 @@ export default function AdminLayout({
     );
   }
 
+  if (me.organization === null) return <OrganizationSetup />;
+
   return (
-    <>
+    <PropertyScopeProvider>
       <AppFrame
         header={
           <header className="border-b border-border bg-surface print:hidden">
@@ -58,11 +62,12 @@ export default function AdminLayout({
               <div className="flex min-w-0 items-center gap-3">
                 <Brand />
                 <span className="hidden truncate border-l border-border pl-3 text-xs text-foreground-secondary lg:block">
-                  {me.name} (Admin)
+                  {me.organization.name} · {me.name} (Admin)
                 </span>
               </div>
               <div className="flex min-w-0 items-center gap-2">
                 <AdminHubLink />
+                <PropertyPicker />
                 {/* On phones, Log out is in the bottom bar's More menu. */}
                 <span className="hidden md:block">
                   <SignOutButton />
@@ -88,6 +93,6 @@ export default function AdminLayout({
           </div>
         </main>
       </AppFrame>
-    </>
+    </PropertyScopeProvider>
   );
 }

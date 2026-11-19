@@ -10,6 +10,7 @@ import { appError } from "./lib/errors";
 import { adminMutation, adminQuery, residentQuery } from "./lib/functions";
 import { notify } from "./lib/account";
 import { rupeesToPaise } from "./lib/money";
+import { residentsInScope } from "./lib/org";
 import { currentRules, currentStreak, ensureRules, lots, pointsRows, statementTimeline, type Rule } from "./lib/points";
 import { currentSettings } from "./lib/settings";
 import { vPointsRuleType } from "./lib/validators";
@@ -199,9 +200,16 @@ export const adjust = adminMutation({
 
 /** Every points change, newest first (the points ledger). */
 export const ledger = adminQuery({
-  args: { paginationOpts: paginationOptsValidator },
-  handler: async (ctx, { paginationOpts }) => {
-    const page = await ctx.db.query("pointsLedger").withIndex("by_createdAt").order("desc").paginate(paginationOpts);
+  args: { paginationOpts: paginationOptsValidator, propertyId: v.optional(v.id("properties")) },
+  handler: async (ctx, { paginationOpts, propertyId }) => {
+    const scope = await residentsInScope(ctx, propertyId);
+    if (scope !== null && scope.size === 0) return { page: [], isDone: true, continueCursor: "" };
+    const page = await ctx.db
+      .query("pointsLedger")
+      .withIndex("by_createdAt")
+      .filter((q) => (scope === null ? true : q.or(...[...scope].map((id) => q.eq(q.field("residentId"), id as Id<"residents">)))))
+      .order("desc")
+      .paginate(paginationOpts);
     const names = new Map<string, string>();
     const out = [];
     for (const r of page.page) {

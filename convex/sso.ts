@@ -63,7 +63,7 @@ export const applySync = internalMutation({
   args: {
     jti: v.string(),
     person: v.optional(v.object({ ...vHubPerson, active: v.boolean(), revoke: v.boolean() })),
-    property: v.optional(v.object({ id: v.string(), name: v.string() })),
+    property: v.optional(v.object({ id: v.string(), name: v.string(), organizationName: v.optional(v.string()) })),
   },
   returns: v.boolean(),
   handler: async (ctx, { jti, person, property }) => {
@@ -72,7 +72,7 @@ export const applySync = internalMutation({
       const { active, revoke, ...rest } = person;
       await applyHubPerson(ctx, rest, { active, revoke });
     }
-    if (property) await ensureHubProperty(ctx, property);
+    if (property) await ensureHubProperty(ctx, { id: property.id, name: property.name }, property.organizationName);
     return true;
   },
 });

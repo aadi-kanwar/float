@@ -4,6 +4,7 @@ import { useMutation } from "convex/react";
 import { Download } from "lucide-react";
 import { useState } from "react";
 import { api } from "@convex/_generated/api";
+import { usePropertyScope } from "@/components/app/property-scope";
 import { Button } from "@/components/ui/button";
 import { Card, CardBody } from "@/components/ui/card";
 import { Field } from "@/components/ui/field";
@@ -23,13 +24,17 @@ const KINDS = [
 
 export default function ExportPage() {
   const download = useMutation(api.exports.download);
+  const { arg, current } = usePropertyScope();
   const today = todayIn();
   const [from, setFrom] = useState(`${addMonths(today.slice(0, 7), -1)}-01`);
   const [to, setTo] = useState(today);
   const [busy, setBusy] = useState<string | null>(null);
   return (
     <>
-      <PageHeader title="CSV export" description="Files open in Excel or Google Sheets. Dates are India time; both ends of the range are included. Every download is in the audit log." />
+      <PageHeader
+        title="CSV export"
+        description={`${current ? `Only ${current.name}. ` : "All properties. "}Files open in Excel or Google Sheets. Dates are India time; both ends of the range are included. Every download is in the audit log.`}
+      />
       <Card>
         <CardBody className="grid gap-4 sm:grid-cols-2">
           <Field id="ex-from" label="From">{(p) => <Input {...p} type="date" value={from} onChange={(e) => setFrom(e.target.value)} />}</Field>
@@ -49,7 +54,7 @@ export default function ExportPage() {
                 onClick={async () => {
                   setBusy(k.kind);
                   try {
-                    const { filename, csv } = await download({ kind: k.kind, from, to });
+                    const { filename, csv } = await download({ kind: k.kind, from, to, ...arg });
                     const url = URL.createObjectURL(new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8" }));
                     const a = document.createElement("a");
                     a.href = url;

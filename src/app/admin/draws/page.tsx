@@ -5,6 +5,7 @@ import { Check, Send, X } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
 import { api } from "@convex/_generated/api";
+import { usePropertyScope } from "@/components/app/property-scope";
 import type { Id } from "@convex/_generated/dataModel";
 import { DrawBadge } from "@/components/money/bits";
 import { Button } from "@/components/ui/button";
@@ -26,7 +27,8 @@ type Tab = "waiting" | "disbursed" | "rejected" | "cancelled";
 
 export default function DrawsPage() {
   const [tab, setTab] = useState<Tab>("waiting");
-  const rows = useQuery(api.draws.queue, { status: tab });
+  const { arg } = usePropertyScope();
+  const rows = useQuery(api.draws.queue, { status: tab, ...arg });
   const approve = useMutation(api.draws.approve);
   const [busy, setBusy] = useState<string | null>(null);
   return (

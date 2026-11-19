@@ -4,6 +4,7 @@ import { useMutation, usePaginatedQuery } from "convex/react";
 import Link from "next/link";
 import { useState } from "react";
 import { api } from "@convex/_generated/api";
+import { usePropertyScope } from "@/components/app/property-scope";
 import type { Id } from "@convex/_generated/dataModel";
 import type { RedemptionStatus } from "@convex/lib/validators";
 import { useMe } from "@/components/app/session";
@@ -32,9 +33,10 @@ export default function RedemptionsAdminPage() {
   const [residentId, setResidentId] = useState("");
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
+  const { arg } = usePropertyScope();
   const perks = useQuery(api.perks.adminList, {});
-  const residents = useQuery(api.residents.list, {});
-  const newCount = useQuery(api.redemptions.newCount, {});
+  const residents = useQuery(api.residents.list, arg);
+  const newCount = useQuery(api.redemptions.newCount, arg);
   const { results, status: loading, loadMore } = usePaginatedQuery(
     api.redemptions.queue,
     {
@@ -43,6 +45,7 @@ export default function RedemptionsAdminPage() {
       residentId: (residentId || undefined) as Id<"residents"> | undefined,
       from: from || undefined,
       to: to || undefined,
+      ...arg,
     },
     { initialNumItems: 30 },
   );

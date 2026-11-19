@@ -7,6 +7,7 @@ import { useState } from "react";
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
 import { formatPhoneForDisplay, temporaryPassword as suggestPassword } from "@convex/lib/inputRules";
+import { usePropertyScope, useShowProperty } from "@/components/app/property-scope";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Dialog, DialogClose, DialogContent, DialogFooter, DialogTrigger } from "@/components/ui/dialog";
@@ -28,12 +29,12 @@ type Pg = { propertyId: Id<"properties">; name: string };
 
 export function ResidentsList() {
   const [search, setSearch] = useState("");
-  const [propertyId, setPropertyId] = useState("");
   const [show, setShow] = useState<"all" | "paused" | "left">("all");
-  const pgs = useQuery(api.properties.list, {});
+  const { arg } = usePropertyScope();
+  const showProperty = useShowProperty();
   const residents = useQuery(api.residents.list, {
     search: search || undefined,
-    propertyId: (propertyId || undefined) as Id<"properties"> | undefined,
+    ...arg,
     status: show === "left" ? "left" : "active",
     paused: show === "paused" ? true : undefined,
   });
@@ -41,16 +42,6 @@ export function ResidentsList() {
     <div className="flex flex-col gap-4">
       <FilterBar>
         <SearchInput label="Search residents" placeholder="Name, room or number" value={search} onChange={(e) => setSearch(e.target.value)} />
-        {pgs && pgs.length > 1 ? (
-          <NativeSelect aria-label="PG" value={propertyId} onChange={(e) => setPropertyId(e.target.value)} className="sm:w-48">
-            <option value="">All PGs</option>
-            {pgs.map((p) => (
-              <option key={p.propertyId} value={p.propertyId}>
-                {p.name}
-              </option>
-            ))}
-          </NativeSelect>
-        ) : null}
         <NativeSelect aria-label="Show" value={show} onChange={(e) => setShow(e.target.value as typeof show)} className="sm:w-44">
           <option value="all">Current residents</option>
           <option value="paused">Paused only</option>
@@ -88,7 +79,7 @@ export function ResidentsList() {
                       ) : null}
                     </span>
                     <span className="truncate text-sm text-foreground-secondary">
-                      {[r.roomNumber ? `Room ${r.roomNumber}` : null, r.propertyName, formatPhoneForDisplay(r.phone)]
+                      {[r.roomNumber ? `Room ${r.roomNumber}` : null, showProperty ? (r.propertyName ?? "No property") : null, formatPhoneForDisplay(r.phone)]
                         .filter(Boolean)
                         .join(" · ")}
                     </span>
@@ -112,6 +103,7 @@ export function ResidentsList() {
 export function AddResidentDialog() {
   const create = useAction(api.residents.create);
   const pgs = useQuery(api.properties.list, {});
+  const { current } = usePropertyScope();
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
@@ -130,7 +122,7 @@ export function AddResidentDialog() {
           setName("");
           setPhone("");
           setRoom("");
-          setPropertyId(pgs?.length === 1 ? pgs[0].propertyId : "");
+          setPropertyId(current?.propertyId ?? (pgs?.length === 1 ? pgs[0].propertyId : ""));
           setDeposit("");
           setPassword(suggestPassword());
           setCreated(null);
@@ -220,10 +212,10 @@ export function AddResidentDialog() {
 
 export function PgSelect({ pgs, value, onChange }: { pgs: Pg[]; value: string; onChange: (v: string) => void }) {
   return (
-    <Field id="r-pg" label="PG">
+    <Field id="r-pg" label="Property">
       {(p) => (
         <NativeSelect {...p} value={value} onChange={(e) => onChange(e.target.value)}>
-          <option value="">Not set</option>
+          <option value="">Choose…</option>
           {pgs.map((pg) => (
             <option key={pg.propertyId} value={pg.propertyId}>
               {pg.name}

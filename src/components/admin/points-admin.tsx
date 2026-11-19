@@ -5,6 +5,7 @@ import { ArrowDown, ArrowUp, Pencil, Plus, Sparkles } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
 import { api } from "@convex/_generated/api";
+import { usePropertyScope } from "@/components/app/property-scope";
 import type { Id } from "@convex/_generated/dataModel";
 import { describeRule, PointsHistory, POINTS_TYPE, StreakDots } from "@/components/points/points-bits";
 import { useMe } from "@/components/app/session";
@@ -175,7 +176,8 @@ function RuleDialog({ rule, index }: { rule?: RuleRow; index?: number }) {
 /** Give (+) or take (−) points from one resident, with a reason. */
 export function AdjustDialog({ residentId, residentName }: { residentId?: Id<"residents">; residentName?: string }) {
   const me = useMe();
-  const residents = useQuery(api.residents.list, residentId ? "skip" : {});
+  const { arg } = usePropertyScope();
+  const residents = useQuery(api.residents.list, residentId ? "skip" : arg);
   const adjust = useMutation(api.points.adjust);
   const [open, setOpen] = useState(false);
   const [who, setWho] = useState("");
@@ -263,7 +265,8 @@ export function AdjustDialog({ residentId, residentName }: { residentId?: Id<"re
 /** Every points change for everyone, newest first. */
 export function PointsLedger() {
   const me = useMe();
-  const { results, status, loadMore } = usePaginatedQuery(api.points.ledger, {}, { initialNumItems: 50 });
+  const { arg } = usePropertyScope();
+  const { results, status, loadMore } = usePaginatedQuery(api.points.ledger, arg, { initialNumItems: 50 });
   if (status === "LoadingFirstPage") return <LoadingState rows={5} />;
   if (results.length === 0) return <EmptyState title="Nothing yet" />;
   return (

@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import { api } from "@convex/_generated/api";
+import { usePropertyScope } from "@/components/app/property-scope";
 import { StatementBadge } from "@/components/money/bits";
 import { Card } from "@/components/ui/card";
 import { FilterBar } from "@/components/ui/filter-bar";
@@ -16,7 +17,8 @@ import { addMonths, formatDate, formatMonth, formatPaise, todayIn } from "@/lib/
 
 export default function StatementsAdminPage() {
   const [month, setMonth] = useState(addMonths(todayIn().slice(0, 7), -1));
-  const rows = useQuery(api.statements.byMonth, { month });
+  const { arg } = usePropertyScope();
+  const rows = useQuery(api.statements.byMonth, { month, ...arg });
   return (
     <>
       <PageHeader title="Statements" description="Made on the last day of each month at 23:59. Status updates live as payments are confirmed." />

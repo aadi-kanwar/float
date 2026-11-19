@@ -3,6 +3,7 @@ import type { MutationCtx, QueryCtx } from "../_generated/server";
 import { PHONE_PASSWORD_PROVIDER } from "../auth";
 import { endSessions } from "../residents";
 import { writeAudit } from "./audit";
+import { theOrganization } from "./org";
 import type { HubPerson, HubPropertyRef } from "./ssoTicket";
 
 /**
@@ -31,7 +32,8 @@ export type FloatRole = "admin" | "resident";
 const asFloatRole = (role: string | null): FloatRole | null => (role === "admin" || role === "resident" ? role : null);
 
 /** The PG for a hub property: linked, or an unlinked one with the same name, or a new one. */
-export async function ensureHubProperty(ctx: Db, ref: HubPropertyRef): Promise<Doc<"properties">> {
+export async function ensureHubProperty(ctx: Db, ref: HubPropertyRef, organizationName?: string): Promise<Doc<"properties">> {
+  const organization = await theOrganization(ctx, organizationName || undefined);
   let property = await ctx.db
     .query("properties")
     .withIndex("by_hubPropertyId", (q) => q.eq("hubPropertyId", ref.id))
@@ -40,7 +42,7 @@ export async function ensureHubProperty(ctx: Db, ref: HubPropertyRef): Promise<D
   if (property === null)
     property = all.find((p) => p.hubPropertyId === undefined && p.name.trim().toLowerCase() === ref.name.trim().toLowerCase()) ?? null;
   if (property === null) {
-    const id = await ctx.db.insert("properties", { name: ref.name || "PG", status: "active", createdAt: Date.now(), hubPropertyId: ref.id });
+    const id = await ctx.db.insert("properties", { organizationId: organization._id, name: ref.name || "PG", status: "active", createdAt: Date.now(), hubPropertyId: ref.id });
     await writeAudit(ctx, { actorUserId: undefined, action: "hub.property_linked", entityType: "properties", entityId: id, metadata: { hubPropertyId: ref.id, created: true } });
     return (await ctx.db.get(id))!;
   }
@@ -48,6 +50,7 @@ export async function ensureHubProperty(ctx: Db, ref: HubPropertyRef): Promise<D
   if (property.hubPropertyId !== ref.id) patch.hubPropertyId = ref.id;
   if (ref.name && property.name !== ref.name && !all.some((p) => p._id !== property!._id && p.name.toLowerCase() === ref.name.toLowerCase())) patch.name = ref.name;
   if (property.status !== "active") patch.status = "active";
+  if (property.organizationId === undefined) patch.organizationId = organization._id;
   if (Object.keys(patch).length > 0) {
     await ctx.db.patch(property._id, patch);
     if (patch.hubPropertyId)

@@ -19,6 +19,7 @@ import { appError } from "./lib/errors";
 import { adminQuery, internalMutation, residentQuery } from "./lib/functions";
 import { monthOutstanding, replay, voidIds, type LedgerRow } from "./lib/ledger";
 import { formatPaise } from "./lib/money";
+import { inScope, residentsInScope } from "./lib/org";
 import { awardPoints, expirePoints } from "./lib/points";
 import { currentSettings } from "./lib/settings";
 import { dueDateFor, endOfDay, istDate, istMonth, istStartOfDay, shiftDate, shiftMonth, statementTime } from "./lib/time";
@@ -260,11 +261,12 @@ export const residentDetail = adminQuery({
 
 /** Admin: every statement for a month with its status now. */
 export const byMonth = adminQuery({
-  args: { month: v.string() },
-  handler: async (ctx, { month }) => {
+  args: { month: v.string(), propertyId: v.optional(v.id("properties")) },
+  handler: async (ctx, { month, propertyId }) => {
     const now = Date.now();
+    const scope = await residentsInScope(ctx, propertyId);
     const out = [];
-    for (const s of await ctx.db.query("statements").withIndex("by_month", (q) => q.eq("month", month)).collect()) {
+    for (const s of (await ctx.db.query("statements").withIndex("by_month", (q) => q.eq("month", month)).collect()).filter((x) => inScope(scope, x.residentId))) {
       const resident = await ctx.db.get(s.residentId);
       const account = replay(toRows(await ledgerRows(ctx, s.residentId)));
       const m = account.months.find((x) => x.month === month);

@@ -15,6 +15,7 @@ import {
   viewerQuery,
 } from "./lib/functions";
 import { passwordProblem } from "./lib/inputRules";
+import { activeProperties, findOrganization } from "./lib/org";
 import { currentSettings } from "./lib/settings";
 
 /**
@@ -34,7 +35,19 @@ export const me = viewerQuery({
             .unique()
         : null;
     const settings = await currentSettings(ctx);
+    const organization = user.role === "admin" ? await findOrganization(ctx) : null;
+    const properties = user.role === "admin" && organization ? await activeProperties(ctx) : [];
+    const residentProperty = resident?.propertyId ? await ctx.db.get(resident.propertyId) : null;
     return {
+      /**
+       * Admins: the organisation and its properties (null until it is set up).
+       * Residents: their own property only.
+       */
+      organization: organization && {
+        name: organization.name,
+        properties: properties.map((p) => ({ propertyId: p._id, name: p.name })),
+      },
+      propertyName: residentProperty?.name ?? null,
       name: user.name ?? null,
       /** The Livoza Hub's address, for people who came from the hub (null for everyone else). */
       hubLink: user.ssoManaged === true ? (process.env.HUB_ORIGIN ?? null) : null,

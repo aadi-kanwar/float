@@ -6,7 +6,6 @@ import {
   Inbox,
   Store,
   Sparkles,
-  Building2,
   FileText,
   House,
   LayoutDashboard,
@@ -38,7 +37,6 @@ export const ADMIN_NAV: NavItem[] = [
   { href: "/admin/perks", label: "Perk Store", icon: Store, mobile: false },
   { href: "/admin/redemptions", label: "Redemptions", icon: Inbox, mobile: false },
   { href: "/admin/export", label: "CSV export", icon: Download, mobile: false },
-  { href: "/admin/pgs", label: "PGs", icon: Building2, mobile: false },
   { href: "/admin/audit", label: "Audit log", icon: ScrollText, mobile: false },
   { href: "/admin/settings", label: "Settings", icon: Settings, mobile: false },
 ];

@@ -37,7 +37,7 @@ http.route({
               revoke: sync.revoke,
             },
           })
-        : await ctx.runMutation(internal.sso.applySync, { jti: sync.jti, property: { id: sync.property.id, name: sync.property.name } });
+        : await ctx.runMutation(internal.sso.applySync, { jti: sync.jti, property: { id: sync.property.id, name: sync.property.name, organizationName: sync.property.organizationName } });
     if (!applied) return Response.json({ ok: false }, { status: 401 });
     return Response.json({ ok: true });
   }),
