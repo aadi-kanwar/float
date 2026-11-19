@@ -5,6 +5,7 @@ import { BottomNav } from "@/components/nav/app-nav";
 import { AppFrame } from "./app-frame";
 import { Brand } from "./brand";
 import { AdminHubLink, SignOutButton } from "./session";
+import { NotificationBell } from "./notification-bell";
 
 /**
  * Frame for resident screens (phone-first): app name on top, the bottom
@@ -24,7 +25,14 @@ export function ResidentShell({
         <header className="border-b border-border bg-surface">
           <div className="mx-auto flex h-14 max-w-lg items-center justify-between gap-3 px-4">
             <Brand />
-            {nav ? <AdminHubLink /> : <SignOutButton />}
+            {nav ? (
+              <span className="flex items-center gap-2">
+                <AdminHubLink />
+                <NotificationBell />
+              </span>
+            ) : (
+              <SignOutButton />
+            )}
           </div>
         </header>
       }

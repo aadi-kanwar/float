@@ -1,7 +1,7 @@
 import { authTables } from "@convex-dev/auth/server";
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
-import { vRole, vSettingsValues } from "./lib/validators";
+import { vDrawStatus, vLedgerType, vRole, vSettingsValues } from "./lib/validators";
 
 /**
  * Float: deposit-backed pocket money for PG residents, with points and a
@@ -104,6 +104,119 @@ export default defineSchema({
     changedAt: v.number(),
     reason: v.optional(v.string()),
   }).index("by_version", ["version"]),
+
+  // ---- Money -------------------------------------------------------------
+
+  /**
+   * Every money event, never edited or deleted (append-only). Amounts are
+   * positive paise; the type says whether it is owed or paid. What anyone
+   * owes is worked out from these rows (convex/lib/ledger.ts).
+   */
+  ledgerEntries: defineTable({
+    residentId: v.id("residents"),
+    type: vLedgerType,
+    amountPaise: v.number(),
+    /** Charges and waivers: the month ("YYYY-MM") whose statement they belong to. */
+    cycleMonth: v.optional(v.string()),
+    /** Waivers: the part they waive. */
+    bucket: v.optional(v.union(v.literal("fee"), v.literal("lateFee"))),
+    /** Late fees: the India date they are for (one per statement per day). */
+    forDate: v.optional(v.string()),
+    /** Reversals: the row they cancel (each row can be reversed once). */
+    reversesEntryId: v.optional(v.id("ledgerEntries")),
+    drawRequestId: v.optional(v.id("drawRequests")),
+    repaymentClaimId: v.optional(v.id("repaymentClaims")),
+    /** When it counts (for repayments: when the resident said they paid). */
+    effectiveAt: v.number(),
+    createdAt: v.number(),
+    createdBy: v.optional(v.id("users")), // absent for scheduled jobs
+    note: v.optional(v.string()),
+  })
+    .index("by_resident_effectiveAt", ["residentId", "effectiveAt"])
+    .index("by_type_createdAt", ["type", "createdAt"])
+    .index("by_reverses", ["reversesEntryId"])
+    .index("by_lateFee_day", ["residentId", "cycleMonth", "forDate"])
+    .index("by_createdAt", ["createdAt"]),
+
+  /** A resident asks to draw money. Counts against their limit from the moment it's asked. */
+  drawRequests: defineTable({
+    residentId: v.id("residents"),
+    amountPaise: v.number(),
+    /** The fee worked out with the settings when it was asked (kept as is). */
+    feePaise: v.number(),
+    status: vDrawStatus,
+    requestedAt: v.number(),
+    decidedAt: v.optional(v.number()),
+    decidedBy: v.optional(v.id("users")),
+    disbursedAt: v.optional(v.number()),
+    disbursedBy: v.optional(v.id("users")),
+    upiRef: v.optional(v.string()),
+    note: v.optional(v.string()),
+    termsVersion: v.number(),
+  })
+    .index("by_status_requestedAt", ["status", "requestedAt"])
+    .index("by_resident_requestedAt", ["residentId", "requestedAt"]),
+
+  /** "I've paid": counts only once an admin confirms it. */
+  repaymentClaims: defineTable({
+    residentId: v.id("residents"),
+    amountPaise: v.number(),
+    upiRef: v.optional(v.string()),
+    status: v.union(v.literal("pending"), v.literal("confirmed"), v.literal("rejected")),
+    submittedAt: v.number(),
+    decidedAt: v.optional(v.number()),
+    decidedBy: v.optional(v.id("users")),
+    note: v.optional(v.string()),
+  })
+    .index("by_status_submittedAt", ["status", "submittedAt"])
+    .index("by_resident_submittedAt", ["residentId", "submittedAt"]),
+
+  /**
+   * One per resident per month: the figures as they were when it was made
+   * (never changed afterwards). Whether it's paid is worked out live.
+   */
+  statements: defineTable({
+    residentId: v.id("residents"),
+    month: v.string(), // "YYYY-MM"
+    generatedAt: v.number(),
+    dueDate: v.string(), // "YYYY-MM-DD"
+    dueAt: v.number(), // the end of dueDate, India time
+    drawnPaise: v.number(),
+    feesPaise: v.number(),
+    paidThisMonthPaise: v.number(),
+    carriedOverPaise: v.number(),
+    lateFeesPaise: v.number(),
+    totalDuePaise: v.number(),
+  })
+    .index("by_resident_month", ["residentId", "month"])
+    .index("by_month", ["month"]),
+
+  termsVersions: defineTable({
+    version: v.number(), // 1, 2, …
+    text: v.string(),
+    createdAt: v.number(),
+    createdBy: v.id("users"),
+  }).index("by_version", ["version"]),
+
+  termsAcceptances: defineTable({
+    residentId: v.id("residents"),
+    version: v.number(),
+    acceptedAt: v.number(),
+  }).index("by_resident_version", ["residentId", "version"]),
+
+  /** In-app notifications. `key` makes each one-off notice unique (e.g. "overdue:2027-04"). */
+  notifications: defineTable({
+    residentId: v.id("residents"),
+    kind: v.string(),
+    title: v.string(),
+    body: v.string(),
+    href: v.optional(v.string()),
+    key: v.optional(v.string()),
+    createdAt: v.number(),
+    readAt: v.optional(v.number()),
+  })
+    .index("by_resident_createdAt", ["residentId", "createdAt"])
+    .index("by_resident_key", ["residentId", "key"]),
 
   // Sign-in abuse protection: failed attempts per phone.
   authAttemptLimits: defineTable({

@@ -9,10 +9,9 @@ import { Icon } from "@/components/ui/icon";
 import { cn } from "@/lib/utils";
 import type { NavItem } from "./nav-items";
 
-/** The home tabs also cover their entry pages (/admin/entries/…, /me/entries/…). */
+/** The home tabs are active only on the home page itself. */
 function isActive(pathname: string, href: string) {
-  if (href === "/admin" || href === "/me")
-    return pathname === href || pathname.startsWith(`${href}/entries`);
+  if (href === "/admin" || href === "/me") return pathname === href;
   return pathname.startsWith(href);
 }
 

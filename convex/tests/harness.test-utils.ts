@@ -51,7 +51,7 @@ export async function signedInAs(t: T, userId: Id<"users">) {
   const sessionId = await t.run(async (ctx) =>
     ctx.db.insert("authSessions", {
       userId,
-      expirationTime: Date.now() + 3_600_000,
+      expirationTime: Date.now() + 10 * 365 * 24 * 3_600_000,
     }),
   );
   return t.withIdentity({ subject: `${userId}|${sessionId}` });

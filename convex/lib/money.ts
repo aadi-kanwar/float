@@ -42,3 +42,15 @@ export function rupeesToPaise(rupees: number): number {
   }
   return rupees * 100;
 }
+
+/**
+ * The fee on a draw: `basisPoints` (500 = 5%) of the amount, rounded to the
+ * nearest whole rupee (halves round up). Integer maths only.
+ */
+export function drawFeePaise(amountPaise: number, basisPoints: number): number {
+  // rupees = amountPaise * bp / 1_000_000, rounded half up.
+  const numerator = amountPaise * basisPoints;
+  const denominator = 1_000_000;
+  const rupees = Math.floor((2 * numerator + denominator) / (2 * denominator));
+  return rupees * 100;
+}

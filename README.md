@@ -39,6 +39,27 @@ no access to Float.
   (add, edit, deposit, limit, pause/resume, reset password), PGs, Settings
   (versioned, every change audit-logged), audit log, first-admin seed,
   deploy-key wiring.
+- **Phase 3 (money engine):** draws (ask → approve → mark sent), "I've
+  paid" and admin confirmation, monthly statements (last day, 23:59 IST),
+  daily late fees after the deadline (cap, safe to run twice), deposit
+  settlement, waivers, reversals, terms acceptance, in-app notifications,
+  admin overview and queues. See "Money rules" below.
+
+## Money rules (as built)
+
+- What anyone owes is never stored: `convex/lib/ledger.ts` replays the
+  ledger. Corrections are reversing rows; nothing is edited or deleted.
+- A draw counts against the limit from the moment it's asked, **fee
+  included**, so a resident can never owe more than their limit (or deposit).
+- A draw goes on the ledger (principal and fee as two rows) when the admin
+  marks it sent. Money sent after a month's statement is made goes on the
+  next month's statement.
+- Payments clear the **oldest statement first**; within it late fees, then
+  fees, then the amount drawn.
+- A confirmed "I've paid" counts from when the resident said they paid. While
+  one waits for the admin, late fees it would cover wait too; if the admin
+  rejects it, the missed days are charged on the next run.
+- New terms versions must be accepted again before the next draw.
 
 ## Deploy key
 

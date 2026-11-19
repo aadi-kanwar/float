@@ -1,0 +1,334 @@
+/**
+ * Money views and admin overrides.
+ *
+ * Overrides each need a reason and are audit-logged:
+ * - waive a fee or late fee (whole or part) on one month
+ * - reverse a ledger row (a new reversing row; history is never edited)
+ * - settle dues from the resident's deposit
+ */
+import { v } from "convex/values";
+import type { Doc, Id } from "./_generated/dataModel";
+import type { QueryCtx } from "./_generated/server";
+import { accountSummary, notify, type Summary } from "./lib/account";
+import { requireReason, writeAudit } from "./lib/audit";
+import { appError } from "./lib/errors";
+import { adminMutation, adminQuery, residentMutation, residentQuery } from "./lib/functions";
+import { bucketOutstanding, voidIds } from "./lib/ledger";
+import { formatPaise, rupeesToPaise } from "./lib/money";
+import { afterCredit } from "./lib/rewards";
+import { currentSettings } from "./lib/settings";
+import { istMonth } from "./lib/time";
+import { toRows } from "./lib/account";
+
+function headline(s: Summary) {
+  return {
+    outstandingPaise: s.outstandingPaise,
+    creditBalancePaise: s.creditBalancePaise,
+    depositBalancePaise: s.depositBalancePaise,
+    limitPaise: s.limitPaise,
+    pendingDrawsPaise: s.pendingDrawsPaise,
+    availablePaise: s.availablePaise,
+    overdue: s.overdue,
+    overduePaise: s.overduePaise,
+    nextDue: s.nextDue,
+    unbilledPaise: s.unbilledPaise,
+  };
+}
+
+function ledgerView(entries: Doc<"ledgerEntries">[]) {
+  const cancelled = voidIds(toRows(entries));
+  const reversedBy = new Map(entries.filter((e) => e.reversesEntryId).map((e) => [e.reversesEntryId as string, e._id]));
+  return entries
+    .map((e) => ({
+      entryId: e._id,
+      type: e.type,
+      amountPaise: e.amountPaise,
+      cycleMonth: e.cycleMonth ?? null,
+      bucket: e.bucket ?? null,
+      forDate: e.forDate ?? null,
+      effectiveAt: e.effectiveAt,
+      createdAt: e.createdAt,
+      note: e.note ?? null,
+      reversesEntryId: e.reversesEntryId ?? null,
+      reversed: cancelled.has(e._id) && e.type !== "reversal",
+      canReverse: e.type !== "reversal" && !reversedBy.has(e._id),
+    }))
+    .sort((a, b) => b.effectiveAt - a.effectiveAt || b.createdAt - a.createdAt);
+}
+
+/** The resident's own Home figures. */
+export const mySummary = residentQuery({
+  args: {},
+  handler: async (ctx) => {
+    const { resident } = ctx.resident;
+    const settings = await currentSettings(ctx);
+    const s = await accountSummary(ctx, resident, settings);
+    const pendingClaims = (
+      await ctx.db
+        .query("repaymentClaims")
+        .withIndex("by_resident_submittedAt", (q) => q.eq("residentId", resident._id))
+        .collect()
+    )
+      .filter((c) => c.status === "pending")
+      .reduce((sum, c) => sum + c.amountPaise, 0);
+    return {
+      ...headline(s),
+      pendingClaimsPaise: pendingClaims,
+      paused: resident.paused,
+      frozen: settings.freezeWhenOverdue && s.overdue,
+      dueDay: settings.dueDayOfMonth,
+      thisMonth: istMonth(Date.now()),
+    };
+  },
+});
+
+/** The resident's activity: ledger rows, draw requests and payments, newest first. */
+export const myActivity = residentQuery({
+  args: {},
+  handler: async (ctx) => {
+    const { resident } = ctx.resident;
+    const s = await accountSummary(ctx, resident, await currentSettings(ctx));
+    return ledgerView(s.entries).map((e) => ({ ...e, canReverse: false }));
+  },
+});
+
+/** Admin: one resident's money (their page). */
+export const residentAccount = adminQuery({
+  args: { residentId: v.id("residents") },
+  handler: async (ctx, { residentId }) => {
+    const resident = await ctx.db.get(residentId);
+    if (resident === null) throw appError("NOT_FOUND");
+    const s = await accountSummary(ctx, resident, await currentSettings(ctx));
+    return {
+      ...headline(s),
+      ledger: ledgerView(s.entries),
+      statements: s.statements.map((x) => ({
+        month: x.statement.month,
+        dueDate: x.statement.dueDate,
+        totalDuePaise: x.statement.totalDuePaise,
+        status: x.status,
+        outstandingPaise: x.outstandingPaise,
+        lateFeesSoFarPaise: x.lateFeesSoFarPaise,
+      })),
+      /** Months with a fee or late fee left to waive. */
+      waivable: s.account.months
+        .map((m) => ({ month: m.month, feePaise: bucketOutstanding(m, "fee"), lateFeePaise: bucketOutstanding(m, "lateFee") }))
+        .filter((m) => m.feePaise > 0 || m.lateFeePaise > 0),
+    };
+  },
+});
+
+async function loadResident(ctx: Pick<QueryCtx, "db">, id: Id<"residents">) {
+  const r = await ctx.db.get(id);
+  if (r === null) throw appError("NOT_FOUND");
+  return r;
+}
+
+/** Waive all or part of one month's fee or late fee. */
+export const waive = adminMutation({
+  args: {
+    residentId: v.id("residents"),
+    month: v.string(),
+    bucket: v.union(v.literal("fee"), v.literal("lateFee")),
+    amountRupees: v.union(v.number(), v.null()), // null = all of it
+    reason: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const reason = requireReason(args.reason);
+    const resident = await loadResident(ctx, args.residentId);
+    const s = await accountSummary(ctx, resident, await currentSettings(ctx));
+    const m = s.account.months.find((x) => x.month === args.month);
+    const left = m ? bucketOutstanding(m, args.bucket) : 0;
+    if (left === 0) throw appError("CONFLICT", "There's nothing of that left to waive.");
+    const amountPaise = args.amountRupees === null ? left : rupeesToPaise(args.amountRupees);
+    if (amountPaise <= 0 || amountPaise > left) throw appError("INVALID_INPUT", `You can waive up to ${formatPaise(left)}.`);
+    const now = Date.now();
+    const id = await ctx.db.insert("ledgerEntries", {
+      residentId: resident._id,
+      type: "waiver",
+      amountPaise,
+      cycleMonth: args.month,
+      bucket: args.bucket,
+      effectiveAt: now,
+      createdAt: now,
+      createdBy: ctx.admin.userId,
+      note: reason,
+    });
+    await writeAudit(ctx, {
+      actorUserId: ctx.admin.userId,
+      action: "ledger.waived",
+      entityType: "ledgerEntries",
+      entityId: id,
+      residentId: resident._id,
+      reason,
+      metadata: { month: args.month, bucket: args.bucket, amountPaise, before: left, after: left - amountPaise },
+    });
+    await afterCredit(ctx, resident._id, ctx.admin.userId);
+    return null;
+  },
+});
+
+/** Cancels one ledger row with a reversing row. Each row can be reversed once. */
+export const reverse = adminMutation({
+  args: { entryId: v.id("ledgerEntries"), reason: v.string() },
+  handler: async (ctx, args) => {
+    const reason = requireReason(args.reason);
+    const entry = await ctx.db.get(args.entryId);
+    if (entry === null) throw appError("NOT_FOUND");
+    if (entry.type === "reversal") throw appError("CONFLICT", "A reversal can't be reversed. Add the right row again instead.");
+    const already = await ctx.db
+      .query("ledgerEntries")
+      .withIndex("by_reverses", (q) => q.eq("reversesEntryId", entry._id))
+      .first();
+    if (already !== null) throw appError("CONFLICT", "This row was already reversed.");
+    const now = Date.now();
+    const id = await ctx.db.insert("ledgerEntries", {
+      residentId: entry.residentId,
+      type: "reversal",
+      amountPaise: entry.amountPaise,
+      cycleMonth: entry.cycleMonth,
+      reversesEntryId: entry._id,
+      effectiveAt: now,
+      createdAt: now,
+      createdBy: ctx.admin.userId,
+      note: reason,
+    });
+    await writeAudit(ctx, {
+      actorUserId: ctx.admin.userId,
+      action: "ledger.reversed",
+      entityType: "ledgerEntries",
+      entityId: id,
+      residentId: entry.residentId,
+      reason,
+      metadata: { reversed: { entryId: entry._id, type: entry.type, amountPaise: entry.amountPaise, cycleMonth: entry.cycleMonth ?? null } },
+    });
+    await afterCredit(ctx, entry.residentId, ctx.admin.userId);
+    return null;
+  },
+});
+
+/** Settles dues from the deposit (records it; the deposit left goes down). */
+export const settleFromDeposit = adminMutation({
+  args: { residentId: v.id("residents"), amountRupees: v.number(), reason: v.string() },
+  handler: async (ctx, args) => {
+    const reason = requireReason(args.reason);
+    const resident = await loadResident(ctx, args.residentId);
+    const s = await accountSummary(ctx, resident, await currentSettings(ctx));
+    const amountPaise = rupeesToPaise(args.amountRupees);
+    if (amountPaise <= 0) throw appError("INVALID_INPUT", "Enter an amount.");
+    if (amountPaise > s.outstandingPaise) throw appError("INVALID_INPUT", `They owe ${formatPaise(s.outstandingPaise)}.`);
+    if (amountPaise > s.depositBalancePaise) throw appError("INVALID_INPUT", `Only ${formatPaise(s.depositBalancePaise)} of the deposit is left.`);
+    const now = Date.now();
+    const id = await ctx.db.insert("ledgerEntries", {
+      residentId: resident._id,
+      type: "depositAdjustment",
+      amountPaise,
+      effectiveAt: now,
+      createdAt: now,
+      createdBy: ctx.admin.userId,
+      note: reason,
+    });
+    const after = s.depositBalancePaise - amountPaise;
+    await writeAudit(ctx, {
+      actorUserId: ctx.admin.userId,
+      action: "deposit.settled",
+      entityType: "ledgerEntries",
+      entityId: id,
+      residentId: resident._id,
+      reason,
+      metadata: { amountPaise, depositBefore: s.depositBalancePaise, depositAfter: after },
+    });
+    await notify(ctx, resident._id, {
+      kind: "deposit_settled",
+      title: "Dues settled from your deposit",
+      body: `${formatPaise(amountPaise)} of your dues was settled from your deposit. Deposit left: ${formatPaise(after)}.`,
+      href: "/me/activity",
+    });
+    await afterCredit(ctx, resident._id, ctx.admin.userId);
+    return { depositBalancePaise: after };
+  },
+});
+
+// ---- Notifications (residents) ---------------------------------------------
+
+export const myNotifications = residentQuery({
+  args: {},
+  handler: async (ctx) =>
+    (
+      await ctx.db
+        .query("notifications")
+        .withIndex("by_resident_createdAt", (q) => q.eq("residentId", ctx.resident.resident._id))
+        .order("desc")
+        .take(100)
+    ).map((n) => ({ id: n._id, kind: n.kind, title: n.title, body: n.body, href: n.href ?? null, createdAt: n.createdAt, read: n.readAt !== undefined })),
+});
+
+export const unreadCount = residentQuery({
+  args: {},
+  handler: async (ctx) =>
+    (
+      await ctx.db
+        .query("notifications")
+        .withIndex("by_resident_createdAt", (q) => q.eq("residentId", ctx.resident.resident._id))
+        .order("desc")
+        .take(100)
+    ).filter((n) => n.readAt === undefined).length,
+});
+
+export const markAllRead = residentMutation({
+  args: {},
+  handler: async (ctx) => {
+    const now = Date.now();
+    for (const n of await ctx.db
+      .query("notifications")
+      .withIndex("by_resident_createdAt", (q) => q.eq("residentId", ctx.resident.resident._id))
+      .collect())
+      if (n.readAt === undefined) await ctx.db.patch(n._id, { readAt: now });
+    return null;
+  },
+});
+
+// ---- Admin overview --------------------------------------------------------
+
+export const overview = adminQuery({
+  args: {},
+  handler: async (ctx) => {
+    const settings = await currentSettings(ctx);
+    const now = Date.now();
+    let outstanding = 0;
+    let overdueCount = 0;
+    let overdueAmount = 0;
+    const residents = await ctx.db.query("residents").collect();
+    for (const r of residents) {
+      const s = await accountSummary(ctx, r, settings, now);
+      outstanding += s.outstandingPaise;
+      if (s.overdue) {
+        overdueCount += 1;
+        overdueAmount += s.overduePaise;
+      }
+    }
+    const month = istMonth(now);
+    const fees = (await ctx.db.query("ledgerEntries").withIndex("by_type_createdAt", (q) => q.eq("type", "fee")).collect()).filter(
+      (e) => e.cycleMonth === month,
+    );
+    const reversals = await ctx.db.query("ledgerEntries").withIndex("by_type_createdAt", (q) => q.eq("type", "reversal")).collect();
+    const reversed = new Set(reversals.map((e) => e.reversesEntryId));
+    const waivedFees = (await ctx.db.query("ledgerEntries").withIndex("by_type_createdAt", (q) => q.eq("type", "waiver")).collect())
+      .filter((e) => e.bucket === "fee" && e.cycleMonth === month && !reversed.has(e._id))
+      .reduce((sum, e) => sum + e.amountPaise, 0);
+    const feesThisMonth = fees.filter((e) => !reversed.has(e._id)).reduce((sum, e) => sum + e.amountPaise, 0) - waivedFees;
+    const drawsPending = (await ctx.db.query("drawRequests").withIndex("by_status_requestedAt", (q) => q.eq("status", "requested")).collect()).length;
+    const drawsToSend = (await ctx.db.query("drawRequests").withIndex("by_status_requestedAt", (q) => q.eq("status", "approved")).collect()).length;
+    const repaymentsPending = (await ctx.db.query("repaymentClaims").withIndex("by_status_submittedAt", (q) => q.eq("status", "pending")).collect()).length;
+    return {
+      residents: residents.filter((r) => r.status === "active").length,
+      outstandingPaise: outstanding,
+      overdueCount,
+      overduePaise: overdueAmount,
+      feesThisMonthPaise: feesThisMonth,
+      drawsPending,
+      drawsToSend,
+      repaymentsPending,
+    };
+  },
+});

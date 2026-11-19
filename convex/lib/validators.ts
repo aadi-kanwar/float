@@ -35,3 +35,22 @@ export const vSettingsValues = v.object({
   pointsExpiryMonths: v.number(),
 });
 export type SettingsValues = Infer<typeof vSettingsValues>;
+
+export const vLedgerType = v.union(
+  v.literal("draw"),
+  v.literal("fee"),
+  v.literal("lateFee"),
+  v.literal("repayment"),
+  v.literal("waiver"),
+  v.literal("reversal"),
+  v.literal("depositAdjustment"),
+);
+
+export const vDrawStatus = v.union(
+  v.literal("requested"),
+  v.literal("approved"),
+  v.literal("disbursed"),
+  v.literal("rejected"),
+  v.literal("cancelled"),
+);
+export type DrawStatus = Infer<typeof vDrawStatus>;

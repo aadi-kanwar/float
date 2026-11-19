@@ -1,7 +1,11 @@
 import {
+  ArrowDownToLine,
+  ArrowUpFromLine,
   Building2,
+  FileText,
   House,
   LayoutDashboard,
+  ListOrdered,
   ScrollText,
   Settings,
   UserRound,
@@ -20,6 +24,9 @@ export type NavItem = {
 export const ADMIN_NAV: NavItem[] = [
   { href: "/admin", label: "Overview", icon: LayoutDashboard },
   { href: "/admin/residents", label: "Residents", icon: Users },
+  { href: "/admin/draws", label: "Draws", icon: ArrowUpFromLine },
+  { href: "/admin/repayments", label: "Repayments", icon: ArrowDownToLine },
+  { href: "/admin/statements", label: "Statements", icon: FileText, mobile: false },
   { href: "/admin/pgs", label: "PGs", icon: Building2, mobile: false },
   { href: "/admin/audit", label: "Audit log", icon: ScrollText, mobile: false },
   { href: "/admin/settings", label: "Settings", icon: Settings, mobile: false },
@@ -28,5 +35,7 @@ export const ADMIN_NAV: NavItem[] = [
 /** Resident screens (bottom bar on every screen size; phone-first). */
 export const RESIDENT_NAV: NavItem[] = [
   { href: "/me", label: "Home", icon: House },
+  { href: "/me/statements", label: "Statements", icon: FileText },
+  { href: "/me/activity", label: "Activity", icon: ListOrdered },
   { href: "/me/account", label: "Account", icon: UserRound },
 ];
