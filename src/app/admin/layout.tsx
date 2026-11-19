@@ -1,12 +1,16 @@
 "use client";
 
 import { useRouter } from "next/navigation";
+import { ThemeToggle } from "@/components/app/theme-toggle";
 import { useEffect } from "react";
 import { api } from "@convex/_generated/api";
 import { useQuery } from "@/lib/convex";
 import { OrganizationSetup } from "@/components/admin/organization-setup";
 import { AppFrame } from "@/components/app/app-frame";
-import { PropertyPicker, PropertyScopeProvider } from "@/components/app/property-scope";
+import {
+  PropertyPicker,
+  PropertyScopeProvider,
+} from "@/components/app/property-scope";
 import { Brand } from "@/components/app/brand";
 import {
   destinationFor,
@@ -31,8 +35,13 @@ export default function AdminLayout({
     else if (me?.mustChangePassword) router.replace(destinationFor(me));
   }, [me, router]);
 
-  const newRedemptions = useQuery(api.redemptions.newCount, me?.role === "admin" && !me.mustChangePassword ? {} : "skip");
-  const ADMIN_NAV = namedNav(BASE_NAV, me?.pointsName, { "/admin/redemptions": newRedemptions ?? 0 });
+  const newRedemptions = useQuery(
+    api.redemptions.newCount,
+    me?.role === "admin" && !me.mustChangePassword ? {} : "skip",
+  );
+  const ADMIN_NAV = namedNav(BASE_NAV, me?.pointsName, {
+    "/admin/redemptions": newRedemptions ?? 0,
+  });
   if (me === undefined || me === null || me.mustChangePassword) {
     return (
       <div className="mx-auto max-w-5xl p-4">
@@ -70,7 +79,10 @@ export default function AdminLayout({
                 <PropertyPicker />
                 {/* On phones, Log out is in the bottom bar's More menu. */}
                 <span className="hidden md:block">
-                  <SignOutButton />
+                  <span className="flex items-center gap-1">
+                    <ThemeToggle />
+                    <SignOutButton />
+                  </span>
                 </span>
               </div>
             </div>
@@ -82,7 +94,12 @@ export default function AdminLayout({
             items={ADMIN_NAV.filter((item) => item.mobile !== false)}
             more={{
               items: ADMIN_NAV.filter((item) => item.mobile === false),
-              footer: <SignOutButton variant="ghost" full />,
+              footer: (
+                <>
+                  <ThemeToggle full />
+                  <SignOutButton variant="ghost" full />
+                </>
+              ),
             }}
           />
         }

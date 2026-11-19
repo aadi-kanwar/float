@@ -5,6 +5,7 @@ import { BottomNav } from "@/components/nav/app-nav";
 import { AppFrame } from "./app-frame";
 import { Brand } from "./brand";
 import { AdminHubLink, SignOutButton, useMe } from "./session";
+import { ThemeToggle } from "@/components/app/theme-toggle";
 import { namedNav } from "@/components/nav/nav-items";
 import { NotificationBell } from "./notification-bell";
 
@@ -33,12 +34,31 @@ export function ResidentShell({
                 <NotificationBell />
               </span>
             ) : (
-              <SignOutButton />
+              <span className="flex items-center gap-1">
+                <ThemeToggle />
+                <SignOutButton />
+              </span>
             )}
           </div>
         </header>
       }
-      nav={nav ? <BottomNav items={namedNav(RESIDENT_NAV, me?.pointsName)} more={{ items: RESIDENT_MORE, footer: <SignOutButton variant="ghost" full /> }} everywhere /> : null}
+      nav={
+        nav ? (
+          <BottomNav
+            items={namedNav(RESIDENT_NAV, me?.pointsName)}
+            more={{
+              items: RESIDENT_MORE,
+              footer: (
+                <>
+                  <ThemeToggle full />
+                  <SignOutButton variant="ghost" full />
+                </>
+              ),
+            }}
+            everywhere
+          />
+        ) : null
+      }
     >
       <main className="mx-auto flex min-h-full w-full max-w-lg flex-col gap-6 px-4 py-6">
         {children}
