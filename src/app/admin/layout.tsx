@@ -2,6 +2,8 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
+import { api } from "@convex/_generated/api";
+import { useQuery } from "@/lib/convex";
 import { AppFrame } from "@/components/app/app-frame";
 import { Brand } from "@/components/app/brand";
 import {
@@ -27,7 +29,8 @@ export default function AdminLayout({
     else if (me?.mustChangePassword) router.replace(destinationFor(me));
   }, [me, router]);
 
-  const ADMIN_NAV = namedNav(BASE_NAV, me?.pointsName);
+  const newRedemptions = useQuery(api.redemptions.newCount, me?.role === "admin" && !me.mustChangePassword ? {} : "skip");
+  const ADMIN_NAV = namedNav(BASE_NAV, me?.pointsName, { "/admin/redemptions": newRedemptions ?? 0 });
   if (me === undefined || me === null || me.mustChangePassword) {
     return (
       <div className="mx-auto max-w-5xl p-4">

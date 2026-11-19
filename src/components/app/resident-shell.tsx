@@ -1,6 +1,6 @@
 "use client";
 
-import { RESIDENT_NAV } from "@/components/nav/nav-items";
+import { RESIDENT_MORE, RESIDENT_NAV } from "@/components/nav/nav-items";
 import { BottomNav } from "@/components/nav/app-nav";
 import { AppFrame } from "./app-frame";
 import { Brand } from "./brand";
@@ -38,7 +38,7 @@ export function ResidentShell({
           </div>
         </header>
       }
-      nav={nav ? <BottomNav items={namedNav(RESIDENT_NAV, me?.pointsName)} everywhere /> : null}
+      nav={nav ? <BottomNav items={namedNav(RESIDENT_NAV, me?.pointsName)} more={{ items: RESIDENT_MORE, footer: <SignOutButton variant="ghost" full /> }} everywhere /> : null}
     >
       <main className="mx-auto flex min-h-full w-full max-w-lg flex-col gap-6 px-4 py-6">
         {children}

@@ -67,3 +67,34 @@ export const vPointsEntryType = v.union(
   v.literal("expired"),
   v.literal("manual"),
 );
+
+export const vRedemptionStatus = v.union(
+  v.literal("requested"),
+  v.literal("approved"),
+  v.literal("in_progress"),
+  v.literal("fulfilled"),
+  v.literal("rejected"),
+  v.literal("cancelled"),
+);
+export type RedemptionStatus = Infer<typeof vRedemptionStatus>;
+
+/** How often one resident may redeem a perk. Semesters: Jan–Jun and Jul–Dec. */
+export const vPerkLimit = v.union(
+  v.object({ kind: v.literal("unlimited") }),
+  v.object({ kind: v.literal("per_month"), count: v.number() }),
+  v.object({ kind: v.literal("per_semester"), count: v.number() }),
+  v.object({ kind: v.literal("total"), count: v.number() }),
+);
+export type PerkLimit = Infer<typeof vPerkLimit>;
+
+/** A question the resident answers when redeeming (e.g. "Guest name"). */
+export const vPerkField = v.object({
+  key: v.string(),
+  label: v.string(),
+  type: v.union(v.literal("text"), v.literal("date"), v.literal("number"), v.literal("select")),
+  options: v.optional(v.array(v.string())),
+  required: v.boolean(),
+});
+export type PerkField = Infer<typeof vPerkField>;
+
+export const vPerkVisibility = v.union(v.literal("active"), v.literal("hidden"), v.literal("archived"));

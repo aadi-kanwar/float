@@ -55,6 +55,14 @@ no access to Float.
   first; only unused points expire), manual give/take, limit growth rules
   (off by default), points name everywhere from Settings.
 
+- **Phase 5 (Perk Store):** perk editor (title, texts, icon or uploaded
+  image, category, cost, stock, per-resident limit per month / semester
+  (Jan–Jun, Jul–Dec) / total, dates, visibility, questions, fulfilment
+  note, order), categories, store with category filter, redeem flow,
+  live status timelines, admin redemptions queue with filters and a badge,
+  refunds on reject/cancel, CSV export (ledger, statements, points,
+  redemptions) for a date range.
+
 ## Points rules (as built)
 
 - Earned only on principal repaid, for a statement paid in full by its

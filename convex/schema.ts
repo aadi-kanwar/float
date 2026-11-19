@@ -1,7 +1,18 @@
 import { authTables } from "@convex-dev/auth/server";
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
-import { vDrawStatus, vLedgerType, vPointsEntryType, vPointsRuleType, vRole, vSettingsValues } from "./lib/validators";
+import {
+  vDrawStatus,
+  vLedgerType,
+  vPerkField,
+  vPerkLimit,
+  vPerkVisibility,
+  vPointsEntryType,
+  vPointsRuleType,
+  vRedemptionStatus,
+  vRole,
+  vSettingsValues,
+} from "./lib/validators";
 
 /**
  * Float: deposit-backed pocket money for PG residents, with points and a
@@ -286,6 +297,68 @@ export default defineSchema({
     enabled: v.boolean(),
     createdAt: v.number(),
   }),
+
+  // ---- Perk Store ----------------------------------------------------------
+
+  perkCategories: defineTable({
+    name: v.string(),
+    sortOrder: v.number(),
+    archived: v.boolean(),
+    createdAt: v.number(),
+  }).index("by_sortOrder", ["sortOrder"]),
+
+  /** A card in the Perk Store, built by the admin. */
+  perks: defineTable({
+    title: v.string(),
+    summary: v.string(), // short description on the card
+    details: v.string(), // longer text on the perk's page
+    icon: v.string(), // an icon name from the store's list
+    imageId: v.optional(v.id("_storage")),
+    categoryId: v.optional(v.id("perkCategories")),
+    costPoints: v.number(),
+    /** null = unlimited; otherwise how many are left (goes down on redeeming, back up on reject/cancel). */
+    stockLeft: v.union(v.number(), v.null()),
+    perResident: vPerkLimit,
+    availableFrom: v.optional(v.string()), // YYYY-MM-DD, India time
+    availableTo: v.optional(v.string()),
+    visibility: vPerkVisibility,
+    fields: v.array(vPerkField),
+    fulfilmentNote: v.optional(v.string()),
+    sortOrder: v.number(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_visibility_sortOrder", ["visibility", "sortOrder"])
+    .index("by_sortOrder", ["sortOrder"]),
+
+  /** A resident's redemption, with every status change kept in `history`. */
+  redemptions: defineTable({
+    residentId: v.id("residents"),
+    perkId: v.id("perks"),
+    perkTitle: v.string(), // as it was when redeemed
+    costPoints: v.number(),
+    answers: v.array(v.object({ label: v.string(), value: v.string() })),
+    status: vRedemptionStatus,
+    history: v.array(
+      v.object({
+        status: vRedemptionStatus,
+        at: v.number(),
+        by: v.union(v.literal("resident"), v.literal("admin")),
+        byUserId: v.optional(v.id("users")),
+        note: v.optional(v.string()),
+      }),
+    ),
+    /** The points row that paid for it, and the refund (if any). */
+    pointsEntryId: v.id("pointsLedger"),
+    refundEntryId: v.optional(v.id("pointsLedger")),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_status_createdAt", ["status", "createdAt"])
+    .index("by_resident_createdAt", ["residentId", "createdAt"])
+    .index("by_perk_createdAt", ["perkId", "createdAt"])
+    .index("by_resident_perk", ["residentId", "perkId"])
+    .index("by_createdAt", ["createdAt"]),
 
   // Sign-in abuse protection: failed attempts per phone.
   authAttemptLimits: defineTable({

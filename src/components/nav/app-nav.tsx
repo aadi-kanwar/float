@@ -53,6 +53,7 @@ export function AppSidebar({
               >
                 <Icon icon={item.icon} />
                 {item.label}
+                <Badge count={item.badge} />
               </Link>
             </li>
           );
@@ -60,6 +61,16 @@ export function AppSidebar({
       </ul>
       {footer}
     </nav>
+  );
+}
+
+/** A small count next to a menu item (e.g. new redemptions). */
+function Badge({ count }: { count?: number }) {
+  if (!count) return null;
+  return (
+    <span className="tabular ml-auto flex min-w-5 items-center justify-center rounded-full bg-chart-perk px-1.5 text-xs font-semibold text-white" aria-label={`${count} new`}>
+      {count > 99 ? "99+" : count}
+    </span>
   );
 }
 
@@ -115,8 +126,13 @@ export function BottomNav({
           const active = isActive(pathname, item.href);
           return (
             <li key={item.href} className="min-w-0 flex-1">
-              <Link href={item.href} prefetch aria-current={active ? "page" : undefined} className={tabClass}>
+              <Link href={item.href} prefetch aria-current={active ? "page" : undefined} className={cn(tabClass, "relative")}>
                 <TabFace icon={item.icon} label={item.label} active={active} />
+                {item.badge ? (
+                  <span className="absolute top-1 left-1/2 ml-3">
+                    <Badge count={item.badge} />
+                  </span>
+                ) : null}
               </Link>
             </li>
           );
@@ -124,8 +140,9 @@ export function BottomNav({
         {more ? (
           <li className="min-w-0 flex-1">
             <RadixDialog.Root open={open} onOpenChange={setOpen}>
-              <RadixDialog.Trigger className={tabClass} aria-current={moreActive ? "page" : undefined}>
+              <RadixDialog.Trigger className={cn(tabClass, "relative")} aria-current={moreActive ? "page" : undefined}>
                 <TabFace icon={Menu} label="More" active={moreActive || open} />
+                {more.items.some((i) => i.badge) ? <span className="absolute top-2 left-1/2 ml-4 size-2.5 rounded-full bg-chart-perk" aria-label="Something new" /> : null}
               </RadixDialog.Trigger>
               <RadixDialog.Portal>
                 <RadixDialog.Overlay className="fixed inset-0 z-40 bg-inverse/40" />
@@ -149,6 +166,7 @@ export function BottomNav({
                           >
                             <Icon icon={item.icon} />
                             {item.label}
+                            <Badge count={item.badge} />
                           </Link>
                         </li>
                       );

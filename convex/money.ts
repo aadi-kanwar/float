@@ -339,7 +339,9 @@ export const overview = adminQuery({
     const drawsPending = (await ctx.db.query("drawRequests").withIndex("by_status_requestedAt", (q) => q.eq("status", "requested")).collect()).length;
     const drawsToSend = (await ctx.db.query("drawRequests").withIndex("by_status_requestedAt", (q) => q.eq("status", "approved")).collect()).length;
     const repaymentsPending = (await ctx.db.query("repaymentClaims").withIndex("by_status_submittedAt", (q) => q.eq("status", "pending")).collect()).length;
+    const redemptionsPending = (await ctx.db.query("redemptions").withIndex("by_status_createdAt", (q) => q.eq("status", "requested")).collect()).length;
     return {
+      redemptionsPending,
       residents: residents.filter((r) => r.status === "active").length,
       outstandingPaise: outstanding,
       overdueCount,
@@ -439,6 +441,12 @@ export const calendar = adminQuery({
 
     for (const r of await ctx.db.query("residents").collect())
       if (r.createdAt >= start && r.createdAt < end) await push("joined", r.createdAt, r._id, null, "Resident added");
+
+    const redeemed = await ctx.db
+      .query("redemptions")
+      .withIndex("by_createdAt", (q) => q.gte("createdAt", start).lt("createdAt", end))
+      .collect();
+    for (const r of redeemed) await push("perk", r.createdAt, r.residentId, null, `Perk: ${r.perkTitle}`);
 
     events.sort((a, b) => a.at - b.at);
     return { month, events };
