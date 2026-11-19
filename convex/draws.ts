@@ -78,8 +78,8 @@ export async function checkDraw(
   const summary = await accountSummary(ctx, resident, settings);
   if (settings.freezeWhenOverdue && summary.overdue) throw appError("OVERDUE_FROZEN");
   const feePaise = drawFeePaise(amountPaise, settings.feeBasisPoints);
-  if (amountPaise + feePaise > summary.roomPaise)
-    throw appError("LIMIT_EXCEEDED", `You can draw up to ${formatPaise(summary.availablePaise)} right now (the fee is included in your limit).`);
+  // Fees don't use the limit: only the amount drawn counts.
+  if (amountPaise > summary.roomPaise) throw appError("LIMIT_EXCEEDED", `You can draw up to ${formatPaise(summary.availablePaise)} right now.`);
   return { feePaise, termsVersion: terms.version, needsApproval: settings.requireDrawApproval };
 }
 

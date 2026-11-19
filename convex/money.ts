@@ -28,6 +28,7 @@ function headline(s: Summary) {
     depositBalancePaise: s.depositBalancePaise,
     limitPaise: s.limitPaise,
     pendingDrawsPaise: s.pendingDrawsPaise,
+    principalOwedPaise: s.principalOwedPaise,
     availablePaise: s.availablePaise,
     overdue: s.overdue,
     overduePaise: s.overduePaise,

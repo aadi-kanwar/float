@@ -146,7 +146,7 @@ export function SettingsForm() {
             {text("lateFeeCap", "Late fee cap per statement (₹)", "Leave empty for no cap.")}
             {text("dueSoonDays", "\"Due soon\" reminder (days before)")}
             <div className="flex flex-col gap-2 sm:col-span-2">
-              <Toggle id="s-cap" label="Limit can't be more than the deposit" hint="A resident can never owe more than their deposit." checked={form.limitCappedByDeposit} onChange={set("limitCappedByDeposit")} />
+              <Toggle id="s-cap" label="Limit can't be more than the deposit" hint="Money drawn can never be more than the deposit left (fees don't count)." checked={form.limitCappedByDeposit} onChange={set("limitCappedByDeposit")} />
               <Toggle id="s-approve" label="Draws need my approval" hint="Off: draws are approved at once (you still send the money and mark it sent)." checked={form.requireDrawApproval} onChange={set("requireDrawApproval")} />
               <Toggle id="s-freeze" label="No new draws while anything is overdue" hint="" checked={form.freezeWhenOverdue} onChange={set("freezeWhenOverdue")} />
             </div>

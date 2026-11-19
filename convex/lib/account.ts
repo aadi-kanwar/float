@@ -1,7 +1,6 @@
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
-import { replay, monthOutstanding, voidIds, type Account, type LedgerRow, type MonthState } from "./ledger";
-import { drawFeePaise } from "./money";
+import { bucketOutstanding, replay, monthOutstanding, voidIds, type Account, type LedgerRow, type MonthState } from "./ledger";
 import type { SettingsValues } from "./validators";
 import { istMonth, shiftMonth } from "./time";
 
@@ -73,14 +72,8 @@ export function statementStatus(statement: Doc<"statements">, months: MonthState
   return clearedAt <= statement.dueAt ? "paid_on_time" : "paid_late";
 }
 
-/** The largest whole-rupee draw whose amount + fee fits in `roomPaise`. */
-export function maxDrawPaise(roomPaise: number, feeBasisPoints: number): number {
-  if (roomPaise <= 0) return 0;
-  let rupees = Math.floor(roomPaise / 100 / (1 + feeBasisPoints / 10_000));
-  while (rupees > 0 && rupees * 100 + drawFeePaise(rupees * 100, feeBasisPoints) > roomPaise) rupees -= 1;
-  while ((rupees + 1) * 100 + drawFeePaise((rupees + 1) * 100, feeBasisPoints) <= roomPaise) rupees += 1;
-  return rupees * 100;
-}
+/** Whole rupees only (draws are in whole rupees). */
+const wholeRupees = (paise: number) => Math.max(0, Math.floor(paise / 100) * 100);
 
 export type Summary = Awaited<ReturnType<typeof accountSummary>>;
 
@@ -108,11 +101,14 @@ export async function accountSummary(
     .collect();
   const pendingDrawsPaise = pending
     .filter((d) => d.status === "requested" || d.status === "approved")
-    .reduce((sum, d) => sum + d.amountPaise + d.feePaise, 0);
+    .reduce((sum, d) => sum + d.amountPaise, 0);
 
   const ownLimit = resident.limitPaise ?? settings.defaultLimitPaise;
   const limitPaise = settings.limitCappedByDeposit ? Math.max(0, Math.min(ownLimit, depositBalancePaise)) : ownLimit;
-  const usedPaise = account.outstandingPaise + pendingDrawsPaise;
+  // Only money drawn counts against the limit: fees and late fees never do
+  // (the owner's rule: with a ₹5,000 limit a resident can draw the full ₹5,000).
+  const principalOwedPaise = account.months.reduce((sum, m) => sum + bucketOutstanding(m, "principal"), 0);
+  const usedPaise = principalOwedPaise + pendingDrawsPaise;
   const roomPaise = Math.max(0, limitPaise - usedPaise);
 
   const statements = (await statementsOf(ctx, resident._id)).sort((a, b) => (a.month < b.month ? 1 : -1));
@@ -139,9 +135,12 @@ export async function accountSummary(
     creditBalancePaise: account.creditBalancePaise,
     depositBalancePaise,
     limitPaise,
+    /** Draws asked or approved but not sent yet (amount only, no fee). */
     pendingDrawsPaise,
+    /** Money drawn and not repaid yet (no fees): what uses the limit. */
+    principalOwedPaise,
     roomPaise,
-    availablePaise: maxDrawPaise(roomPaise, settings.feeBasisPoints),
+    availablePaise: wholeRupees(roomPaise),
     statements: withStatus,
     overdue: overdue.length > 0,
     overduePaise: overdue.reduce((sum, s) => sum + s.outstandingPaise, 0),

@@ -13,19 +13,20 @@ import { dueCountdown } from "./bits";
 
 type Summary = FunctionReturnType<typeof api.money.mySummary>;
 
-/** The credit limit split into overdue, owed, waiting to be sent and free. */
+/**
+ * The credit limit split into drawn (not repaid), waiting to be sent and
+ * free. Only money drawn uses the limit; fees never do.
+ */
 export function CreditMeter({ s }: { s: Summary }) {
-  const owedNotOverdue = Math.max(0, s.outstandingPaise - s.overduePaise);
   return (
     <SegmentMeter
       label="Your credit"
       size="lg"
-      totalPaise={Math.max(s.limitPaise, s.outstandingPaise + s.pendingDrawsPaise)}
+      totalPaise={Math.max(s.limitPaise, s.principalOwedPaise + s.pendingDrawsPaise)}
       segments={[
-        ...(s.overduePaise > 0 ? [{ key: "overdue", label: "Overdue", valuePaise: s.overduePaise, color: "bg-chart-overdue", icon: CircleAlert }] : []),
-        { key: "owed", label: "You owe", valuePaise: owedNotOverdue, color: "bg-chart-owed" },
-        ...(s.pendingDrawsPaise > 0 ? [{ key: "waiting", label: "Waiting to be sent", valuePaise: s.pendingDrawsPaise, color: "bg-chart-drawn", hatched: true, hint: "Fee included" }] : []),
-        { key: "free", label: "Free to use", valuePaise: Math.max(0, s.limitPaise - s.outstandingPaise - s.pendingDrawsPaise), color: "bg-chart-available", hint: "Draws plus their fee" },
+        { key: "drawn", label: "Drawn, not repaid", valuePaise: s.principalOwedPaise, color: "bg-chart-owed" },
+        ...(s.pendingDrawsPaise > 0 ? [{ key: "waiting", label: "Waiting to be sent", valuePaise: s.pendingDrawsPaise, color: "bg-chart-drawn", hatched: true }] : []),
+        { key: "free", label: "Free to use", valuePaise: s.availablePaise, color: "bg-chart-available" },
       ]}
     />
   );

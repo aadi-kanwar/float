@@ -100,8 +100,9 @@ no access to Float.
 
 - What anyone owes is never stored: `convex/lib/ledger.ts` replays the
   ledger. Corrections are reversing rows; nothing is edited or deleted.
-- A draw counts against the limit from the moment it's asked, **fee
-  included**, so a resident can never owe more than their limit (or deposit).
+- Only **money drawn** uses the limit (owner's rule): with a ₹5,000 limit a
+  resident can draw the full ₹5,000. Fees and late fees are owed on top and
+  never use the limit. A draw counts from the moment it's asked.
 - A draw goes on the ledger (principal and fee as two rows) when the admin
   marks it sent. Money sent after a month's statement is made goes on the
   next month's statement.

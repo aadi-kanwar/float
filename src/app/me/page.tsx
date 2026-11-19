@@ -59,7 +59,7 @@ export default function ResidentHome() {
                 {formatPaise(s.availablePaise)}
               </span>
               <span className="text-sm text-foreground-secondary">
-                Limit {formatPaise(s.limitPaise)} · the fee is included
+                Limit {formatPaise(s.limitPaise)} · fees don&apos;t use your limit
               </span>
               <CreditMeter s={s} />
             </CardBody>
@@ -85,6 +85,11 @@ export default function ResidentHome() {
               </Link>
             </Button>
           </div>
+          {s.outstandingPaise > 0 ? (
+            <p className="text-sm text-foreground-secondary">
+              You owe <span className="font-semibold text-foreground">{formatPaise(s.outstandingPaise)}</span> in total, fees included.
+            </p>
+          ) : null}
           <DueProgress s={s} />
           {s.pendingClaimsPaise > 0 ? (
             <p className="text-sm text-foreground-secondary">

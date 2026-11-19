@@ -60,16 +60,20 @@ describe("1. fees", () => {
 });
 
 describe("2. limit checks", () => {
-  test("blocked above the limit (fee included), counting requests not yet sent", async () => {
+  test("the full limit can be drawn: fees don't use it; requests not yet sent do", async () => {
     const t = await setupTest();
     const admin = await createAdmin(t);
     const r = await ready(t, admin);
-    expect((await r.as.query(api.draws.preview, {})).availablePaise).toBe(476_200); // ₹4,762 + ₹238 fee = ₹5,000
-    expect(await errorCode(r.as.mutation(api.draws.request, { amountRupees: 4800 }))).toBe("LIMIT_EXCEEDED");
-    await r.as.mutation(api.draws.request, { amountRupees: 4000 }); // ₹4,200 with fee, waiting
-    expect(await errorCode(r.as.mutation(api.draws.request, { amountRupees: 800 }))).toBe("LIMIT_EXCEEDED");
-    await r.as.mutation(api.draws.request, { amountRupees: 700 }); // ₹735 -> ₹4,935
+    expect((await r.as.query(api.draws.preview, {})).availablePaise).toBe(500_000); // the full ₹5,000
+    expect(await errorCode(r.as.mutation(api.draws.request, { amountRupees: 5001 }))).toBe("LIMIT_EXCEEDED");
+    const id = await r.as.mutation(api.draws.request, { amountRupees: 4000 }); // waiting: counts already
+    expect(await errorCode(r.as.mutation(api.draws.request, { amountRupees: 1001 }))).toBe("LIMIT_EXCEEDED");
+    await r.as.mutation(api.draws.request, { amountRupees: 1000 }); // exactly ₹5,000 drawn
+    expect((await r.as.query(api.draws.preview, {})).availablePaise).toBe(0);
     expect(await errorCode(r.as.mutation(api.draws.request, { amountRupees: 100 }))).toBe("LIMIT_EXCEEDED");
+    await admin.as.mutation(api.draws.markDisbursed, { drawRequestId: id });
+    const s = await r.as.query(api.money.mySummary, {});
+    expect(s).toMatchObject({ outstandingPaise: 420_000, principalOwedPaise: 400_000, availablePaise: 0 }); // the ₹200 fee is owed but uses no limit
     expect(await errorCode(r.as.mutation(api.draws.request, { amountRupees: 50 }))).toBe("INVALID_INPUT"); // below ₹100
   });
 
@@ -77,11 +81,11 @@ describe("2. limit checks", () => {
     const t = await setupTest();
     const admin = await createAdmin(t);
     const r = await ready(t, admin, 2000);
-    expect(await errorCode(r.as.mutation(api.draws.request, { amountRupees: 1950 }))).toBe("LIMIT_EXCEEDED");
-    await r.as.mutation(api.draws.request, { amountRupees: 1900 }); // ₹1,995
+    expect(await errorCode(r.as.mutation(api.draws.request, { amountRupees: 2001 }))).toBe("LIMIT_EXCEEDED");
+    await r.as.mutation(api.draws.request, { amountRupees: 2000 }); // the whole deposit
     const s = await admin.as.query(api.settings.get, {});
     await admin.as.mutation(api.settings.save, { values: { ...s.values, limitCappedByDeposit: false }, expectedVersion: s.version });
-    await r.as.mutation(api.draws.request, { amountRupees: 2000 }); // now up to ₹5,000
+    await r.as.mutation(api.draws.request, { amountRupees: 3000 }); // now up to ₹5,000
   });
 
   test("blocked while overdue (when frozen), while paused, and before accepting the terms", async () => {
