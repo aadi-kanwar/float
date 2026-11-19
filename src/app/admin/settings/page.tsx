@@ -1,0 +1,20 @@
+"use client";
+
+import { SettingsForm } from "@/components/admin/settings-form";
+import { AccountCard } from "@/components/app/account-card";
+import { PageHeader } from "@/components/ui/page-header";
+
+export default function SettingsPage() {
+  return (
+    <>
+      <PageHeader title="Settings" description="Every change applies from now on and is kept in the audit log. Past statements and records never change." />
+      <SettingsForm />
+      <section aria-labelledby="account" className="flex flex-col gap-2">
+        <h2 id="account" className="font-serif text-2xl tracking-tight">
+          Your account
+        </h2>
+        <AccountCard />
+      </section>
+    </>
+  );
+}
