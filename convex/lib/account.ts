@@ -146,7 +146,9 @@ export async function accountSummary(
     overdue: overdue.length > 0,
     overduePaise: overdue.reduce((sum, s) => sum + s.outstandingPaise, 0),
     /** The next deadline with money owed on it, if any. */
-    nextDue: open[0] ? { dueDate: open[0].statement.dueDate, dueAt: open[0].statement.dueAt, amountPaise: open[0].outstandingPaise, month: open[0].statement.month } : null,
+    nextDue: open[0]
+      ? { dueDate: open[0].statement.dueDate, dueAt: open[0].statement.dueAt, fromAt: open[0].statement.generatedAt, amountPaise: open[0].outstandingPaise, month: open[0].statement.month }
+      : null,
     /** Owed for months whose statement isn't made yet (due on the deadline after the next statement). */
     unbilledPaise,
   };

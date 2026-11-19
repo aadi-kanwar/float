@@ -17,7 +17,7 @@ import { bucketOutstanding, voidIds } from "./lib/ledger";
 import { formatPaise, rupeesToPaise } from "./lib/money";
 import { afterCredit } from "./lib/rewards";
 import { currentSettings } from "./lib/settings";
-import { istMonth } from "./lib/time";
+import { DAY_MS, istDate, istMonth, istStartOfDay, shiftMonth } from "./lib/time";
 import { toRows } from "./lib/account";
 
 function headline(s: Summary) {
@@ -74,6 +74,7 @@ export const mySummary = residentQuery({
     return {
       ...headline(s),
       pendingClaimsPaise: pendingClaims,
+      recordedDepositPaise: resident.depositPaise,
       paused: resident.paused,
       frozen: settings.freezeWhenOverdue && s.overdue,
       dueDay: settings.dueDayOfMonth,
@@ -295,28 +296,46 @@ export const overview = adminQuery({
   handler: async (ctx) => {
     const settings = await currentSettings(ctx);
     const now = Date.now();
+    const month = istMonth(now);
+    const lastMonth = shiftMonth(month, -1);
     let outstanding = 0;
     let overdueCount = 0;
     let overdueAmount = 0;
+    let pendingDraws = 0;
+    let available = 0;
+    const statusCounts: Record<string, number> = { open: 0, paid_early: 0, paid_on_time: 0, paid_late: 0, overdue: 0 };
     const residents = await ctx.db.query("residents").collect();
     for (const r of residents) {
       const s = await accountSummary(ctx, r, settings, now);
       outstanding += s.outstandingPaise;
+      pendingDraws += s.pendingDrawsPaise;
+      if (r.status === "active" && !r.paused) available += s.roomPaise;
       if (s.overdue) {
         overdueCount += 1;
         overdueAmount += s.overduePaise;
       }
+      const last = s.statements.find((x) => x.statement.month === lastMonth);
+      if (last) statusCounts[last.status] += 1;
     }
-    const month = istMonth(now);
-    const fees = (await ctx.db.query("ledgerEntries").withIndex("by_type_createdAt", (q) => q.eq("type", "fee")).collect()).filter(
-      (e) => e.cycleMonth === month,
-    );
+
+    // Money out and in for the last 6 months (India months), from the ledger.
+    const months = Array.from({ length: 6 }, (_, i) => shiftMonth(month, i - 5));
+    const series = new Map(months.map((m) => [m, { month: m, drawnPaise: 0, repaidPaise: 0, feesPaise: 0 }]));
+    const since = istStartOfDay(`${months[0]}-01`);
+    const recent = await ctx.db.query("ledgerEntries").withIndex("by_createdAt", (q) => q.gte("createdAt", since)).collect();
     const reversals = await ctx.db.query("ledgerEntries").withIndex("by_type_createdAt", (q) => q.eq("type", "reversal")).collect();
-    const reversed = new Set(reversals.map((e) => e.reversesEntryId));
-    const waivedFees = (await ctx.db.query("ledgerEntries").withIndex("by_type_createdAt", (q) => q.eq("type", "waiver")).collect())
-      .filter((e) => e.bucket === "fee" && e.cycleMonth === month && !reversed.has(e._id))
-      .reduce((sum, e) => sum + e.amountPaise, 0);
-    const feesThisMonth = fees.filter((e) => !reversed.has(e._id)).reduce((sum, e) => sum + e.amountPaise, 0) - waivedFees;
+    const reversed = new Set<string>(reversals.map((e) => e.reversesEntryId as string));
+    for (const e of recent) {
+      if (reversed.has(e._id) || e.type === "reversal") continue;
+      const bucket = series.get(istMonth(e.effectiveAt));
+      if (!bucket) continue;
+      if (e.type === "draw") bucket.drawnPaise += e.amountPaise;
+      if (e.type === "repayment" || e.type === "depositAdjustment") bucket.repaidPaise += e.amountPaise;
+      if (e.type === "fee") bucket.feesPaise += e.amountPaise;
+      if (e.type === "waiver" && e.bucket === "fee") bucket.feesPaise -= e.amountPaise;
+    }
+    const thisMonth = series.get(month)!;
+
     const drawsPending = (await ctx.db.query("drawRequests").withIndex("by_status_requestedAt", (q) => q.eq("status", "requested")).collect()).length;
     const drawsToSend = (await ctx.db.query("drawRequests").withIndex("by_status_requestedAt", (q) => q.eq("status", "approved")).collect()).length;
     const repaymentsPending = (await ctx.db.query("repaymentClaims").withIndex("by_status_submittedAt", (q) => q.eq("status", "pending")).collect()).length;
@@ -325,10 +344,103 @@ export const overview = adminQuery({
       outstandingPaise: outstanding,
       overdueCount,
       overduePaise: overdueAmount,
-      feesThisMonthPaise: feesThisMonth,
+      pendingDrawsPaise: pendingDraws,
+      availablePaise: available,
+      feesThisMonthPaise: thisMonth.feesPaise,
+      monthly: [...series.values()],
+      lastMonth,
+      lastMonthStatuses: statusCounts,
       drawsPending,
       drawsToSend,
       repaymentsPending,
     };
+  },
+});
+
+// ---- Admin calendar ----------------------------------------------------------
+
+export type CalendarKind =
+  | "draw_sent"
+  | "draw_asked"
+  | "payment"
+  | "deposit_settled"
+  | "statement"
+  | "due"
+  | "late_fee"
+  | "joined"
+  | "perk";
+
+/**
+ * Everything that happened (or is due) on each day of a month, India time:
+ * money sent, draws asked, payments, deposit settlements, statements made,
+ * deadlines, late fees, new residents (and perks, once the store exists).
+ */
+export const calendar = adminQuery({
+  args: { month: v.string() },
+  handler: async (ctx, { month }) => {
+    if (!/^\d{4}-\d{2}$/.test(month)) throw appError("INVALID_INPUT");
+    const start = istStartOfDay(`${month}-01`);
+    const end = istStartOfDay(`${shiftMonth(month, 1)}-01`);
+    const names = new Map<string, string>();
+    const nameOf = async (id: Id<"residents">) => {
+      if (!names.has(id)) names.set(id, (await ctx.db.get(id))?.name ?? "Unknown");
+      return names.get(id)!;
+    };
+    type Event = { date: string; kind: CalendarKind; residentId: Id<"residents"> | null; residentName: string | null; amountPaise: number | null; at: number; label: string };
+    const events: Event[] = [];
+    const push = async (kind: CalendarKind, at: number, residentId: Id<"residents"> | null, amountPaise: number | null, label: string, date?: string) =>
+      events.push({ date: date ?? istDate(at), kind, residentId, residentName: residentId ? await nameOf(residentId) : null, amountPaise, at, label });
+
+    const reversals = await ctx.db.query("ledgerEntries").withIndex("by_type_createdAt", (q) => q.eq("type", "reversal")).collect();
+    const reversed = new Set<string>(reversals.map((e) => e.reversesEntryId as string));
+    // Rows are found by when they were written; late fees and confirmed payments can count from earlier.
+    const rows = await ctx.db
+      .query("ledgerEntries")
+      .withIndex("by_createdAt", (q) => q.gte("createdAt", start - 40 * DAY_MS))
+      .collect();
+    const lateByDay = new Map<string, { count: number; amount: number }>();
+    for (const e of rows) {
+      if (e.effectiveAt < start || e.effectiveAt >= end || reversed.has(e._id)) continue;
+      if (e.type === "draw") await push("draw_sent", e.effectiveAt, e.residentId, e.amountPaise, "Money sent");
+      else if (e.type === "repayment") await push("payment", e.effectiveAt, e.residentId, e.amountPaise, "Payment");
+      else if (e.type === "depositAdjustment") await push("deposit_settled", e.effectiveAt, e.residentId, e.amountPaise, "Settled from deposit");
+      else if (e.type === "lateFee") {
+        const day = e.forDate ?? istDate(e.effectiveAt);
+        const x = lateByDay.get(day) ?? { count: 0, amount: 0 };
+        lateByDay.set(day, { count: x.count + 1, amount: x.amount + e.amountPaise });
+      }
+    }
+    for (const [day, x] of lateByDay)
+      await push("late_fee", istStartOfDay(day), null, x.amount, `Late fees on ${x.count} ${x.count === 1 ? "statement" : "statements"}`, day);
+
+    for (const status of ["requested", "approved", "disbursed", "rejected", "cancelled"] as const) {
+      const asked = await ctx.db
+        .query("drawRequests")
+        .withIndex("by_status_requestedAt", (q) => q.eq("status", status).gte("requestedAt", start).lt("requestedAt", end))
+        .collect();
+      for (const d of asked) await push("draw_asked", d.requestedAt, d.residentId, d.amountPaise, "Draw asked");
+    }
+
+    // Statements made this month, and deadlines falling in this month.
+    const made = await ctx.db.query("statements").withIndex("by_month", (q) => q.eq("month", month)).collect();
+    if (made.length > 0) {
+      const at = Math.min(...made.map((s) => s.generatedAt));
+      await push("statement", at, null, made.reduce((sum, s) => sum + s.totalDuePaise, 0), `${made.length} ${made.length === 1 ? "statement" : "statements"} made`);
+    }
+    const dueHere = await ctx.db.query("statements").withIndex("by_month", (q) => q.eq("month", shiftMonth(month, -1))).collect();
+    if (dueHere.length > 0)
+      await push("due", dueHere[0].dueAt, null, dueHere.reduce((sum, s) => sum + s.totalDuePaise, 0), `Deadline for ${dueHere.length} ${dueHere.length === 1 ? "statement" : "statements"}`, dueHere[0].dueDate);
+    else {
+      // Before any statements exist, still show the coming deadline.
+      const settings = await currentSettings(ctx);
+      const date = `${month}-${String(settings.dueDayOfMonth).padStart(2, "0")}`;
+      await push("due", istStartOfDay(date), null, null, "Repayment deadline", date);
+    }
+
+    for (const r of await ctx.db.query("residents").collect())
+      if (r.createdAt >= start && r.createdAt < end) await push("joined", r.createdAt, r._id, null, "Resident added");
+
+    events.sort((a, b) => a.at - b.at);
+    return { month, events };
   },
 });

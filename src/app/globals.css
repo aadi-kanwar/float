@@ -42,6 +42,24 @@
   --blue-50: #eef4fc;
   --blue-200: #c4d8f2;
   --blue-700: #1f5596;
+
+  /*
+   * Float only: chart colours. Categorical slots in a fixed order, checked
+   * with the data-viz validator (colour-blind separation, lightness band) on
+   * white. Each always comes with a text label or icon, never colour alone.
+   * An entity keeps its colour on every screen:
+   *   1 blue   money drawn / sent     5 magenta perks
+   *   2 orange owed (dues)            6 green   repaid
+   *   3 aqua   credit available       7 violet  statements
+   *   4 yellow deadlines              overdue and late fees use --red-600 (status)
+   */
+  --chart-1: #2a78d6;
+  --chart-2: #eb6834;
+  --chart-3: #1baf7a;
+  --chart-4: #eda100;
+  --chart-5: #e87ba4;
+  --chart-6: #008300;
+  --chart-7: #6250d6;
 }
 
 @theme {
@@ -95,6 +113,17 @@
   --color-info: var(--blue-700);
   --color-info-subtle: var(--blue-50);
   --color-info-border: var(--blue-200);
+
+  /* Charts (Float) */
+  --color-chart-drawn: var(--chart-1);
+  --color-chart-owed: var(--chart-2);
+  --color-chart-available: var(--chart-3);
+  --color-chart-due: var(--chart-4);
+  --color-chart-perk: var(--chart-5);
+  --color-chart-repaid: var(--chart-6);
+  --color-chart-statement: var(--chart-7);
+  --color-chart-overdue: var(--red-600);
+  --color-chart-track: var(--gray-100);
 
   /* Typography: a sans for text, a serif for headings; seven sizes */
   --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
@@ -199,4 +228,9 @@
   body {
     @apply bg-white;
   }
+}
+
+/* Float charts: diagonal hatching = "not final yet" (e.g. draws waiting to be sent). */
+@utility hatched {
+  background-image: repeating-linear-gradient(135deg, rgb(255 255 255 / 0.55) 0 3px, transparent 3px 7px);
 }
