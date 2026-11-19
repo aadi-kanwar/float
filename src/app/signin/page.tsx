@@ -7,6 +7,8 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
+import { useQuery } from "@/lib/convex";
+import { api } from "@convex/_generated/api";
 import { HubOnlyRedirect } from "@/components/app/hub-redirect";
 import { Brand } from "@/components/app/brand";
 import { Banner } from "@/components/ui/banner";
@@ -73,7 +75,7 @@ export default function SignInPage() {
       <Brand size="lg" />
       <div className="flex flex-col gap-1">
         <h1 className="font-serif text-3xl tracking-tight">
-          What we buy, <em className="text-primary-soft">and what it costs.</em>
+          Pocket money, <em className="text-primary-soft">when you need it.</em>
         </h1>
         <p className="text-foreground-secondary">Sign in with your mobile number.</p>
       </div>
@@ -109,6 +111,18 @@ export default function SignInPage() {
           </form>
         </CardBody>
       </Card>
+      <HubLink />
     </main>
+  );
+}
+
+/** Most people sign in once at the Livoza Hub and open Float from there. */
+function HubLink() {
+  const settings = useQuery(api.sso.hubSettings, {});
+  if (!settings?.openUrl) return null;
+  return (
+    <Button asChild variant="secondary" width="full">
+      <a href={settings.openUrl}>Sign in through the Livoza Hub</a>
+    </Button>
   );
 }

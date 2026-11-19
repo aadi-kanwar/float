@@ -63,6 +63,18 @@ no access to Float.
   refunds on reject/cancel, CSV export (ledger, statements, points,
   redemptions) for a date range.
 
+- **Phase 6 (Livoza Hub sign-in), Float side:** `/sso` accepts hub tickets
+  for Admins (Float admin) and Residents (Float resident); `/sso/sync`
+  (audience `float-sync`, including "revoke in all apps") and `/sso/export`
+  (`float-export`); 12-hour hub logins; replay protection; HUB_ONLY switch;
+  "Livoza Hub" link. An admin ticket never changes a resident account (and
+  the other way round): it's refused and logged as `hub.role_conflict`.
+  **Still to do (needs `FLOAT_CONVEX_DEPLOY_KEY` in the session):** set
+  `HUB_SSO_PUBLIC_KEY` and `HUB_ORIGIN` on Float's Convex deployment (same
+  values as on Crate's), then add Float to the hub's `tools.config.ts`
+  (id `float`, appUrl, ssoPath `/sso`, backendUrl = Float's
+  `https://<deployment>.convex.site`, roles admin→admin, resident→resident).
+
 ## Points rules (as built)
 
 - Earned only on principal repaid, for a statement paid in full by its

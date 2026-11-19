@@ -16,4 +16,8 @@ crons.daily("month-end statements (23:59 IST)", { hourUTC: 18, minuteUTC: 29 }, 
 // deadline, "due soon" and "overdue" notices, and catch-up statements.
 crons.daily("late fees and reminders (00:05 IST)", { hourUTC: 18, minuteUTC: 35 }, internal.statements.dailyJob, {});
 
+// Every 5 minutes, forget Livoza Hub tickets used more than 10 minutes ago
+// (they expire after 60 seconds, so they can't be reused anyway).
+crons.interval("forget used hub tickets", { minutes: 5 }, internal.sso.deleteOldTickets, {});
+
 export default crons;
