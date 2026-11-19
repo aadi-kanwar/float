@@ -101,7 +101,7 @@ export async function requireResident(ctx: ReadCtx): Promise<ResidentViewer> {
 // Append-only tables: history is never edited or deleted.
 // ---------------------------------------------------------------------------
 
-const APPEND_ONLY_TABLES = ["auditLog", "settingsVersions", "ledgerEntries", "termsVersions", "termsAcceptances"] as const;
+const APPEND_ONLY_TABLES = ["auditLog", "settingsVersions", "ledgerEntries", "termsVersions", "termsAcceptances", "pointsLedger"] as const;
 
 const appendOnlyRules = Object.fromEntries(
   APPEND_ONLY_TABLES.map((table) => [table, { modify: async () => false }]),

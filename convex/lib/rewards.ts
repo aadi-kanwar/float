@@ -1,16 +1,16 @@
 import type { Id } from "../_generated/dataModel";
 import type { MutationCtx } from "../_generated/server";
+import { awardPoints } from "./points";
 
 /**
- * Runs after every confirmed payment or deposit settlement. Points for
- * on-time statements are added here in the points phase.
+ * Runs after every confirmed payment, waiver, reversal or deposit
+ * settlement: gives points for statements now paid on time (or takes them
+ * back if a reversal undid that).
  */
 export async function afterCredit(
-  _ctx: Pick<MutationCtx, "db">,
-  _residentId: Id<"residents">,
-  _actorUserId: Id<"users"> | undefined,
+  ctx: Pick<MutationCtx, "db">,
+  residentId: Id<"residents">,
+  actorUserId: Id<"users"> | undefined,
 ): Promise<void> {
-  void _ctx;
-  void _residentId;
-  void _actorUserId;
+  await awardPoints(ctx, residentId, actorUserId);
 }

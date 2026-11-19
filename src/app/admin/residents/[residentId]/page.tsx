@@ -20,6 +20,7 @@ import { OneTimePassword } from "@/components/admin/one-time-password";
 import { ReasonDialog } from "@/components/admin/reason-dialog";
 import { PgSelect } from "@/components/admin/residents";
 import { ResidentMoney } from "@/components/admin/resident-money";
+import { ResidentPoints } from "@/components/admin/points-admin";
 import { useMe } from "@/components/app/session";
 import { Banner } from "@/components/ui/banner";
 import { Button } from "@/components/ui/button";
@@ -157,6 +158,12 @@ export default function ResidentPage() {
           />
         </CardBody>
       </Card>
+      <section aria-labelledby="points" className="flex flex-col gap-2">
+        <h2 id="points" className="font-serif text-2xl tracking-tight">
+          Rewards
+        </h2>
+        <ResidentPoints residentId={residentId} residentName={r.name} />
+      </section>
       <section aria-labelledby="history" className="flex flex-col gap-2">
         <h2 id="history" className="font-serif text-2xl tracking-tight">
           Changes

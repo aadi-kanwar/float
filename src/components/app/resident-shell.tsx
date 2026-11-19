@@ -4,7 +4,8 @@ import { RESIDENT_NAV } from "@/components/nav/nav-items";
 import { BottomNav } from "@/components/nav/app-nav";
 import { AppFrame } from "./app-frame";
 import { Brand } from "./brand";
-import { AdminHubLink, SignOutButton } from "./session";
+import { AdminHubLink, SignOutButton, useMe } from "./session";
+import { namedNav } from "@/components/nav/nav-items";
 import { NotificationBell } from "./notification-bell";
 
 /**
@@ -19,6 +20,7 @@ export function ResidentShell({
   nav?: boolean;
   children: React.ReactNode;
 }) {
+  const me = useMe();
   return (
     <AppFrame
       header={
@@ -36,7 +38,7 @@ export function ResidentShell({
           </div>
         </header>
       }
-      nav={nav ? <BottomNav items={RESIDENT_NAV} everywhere /> : null}
+      nav={nav ? <BottomNav items={namedNav(RESIDENT_NAV, me?.pointsName)} everywhere /> : null}
     >
       <main className="mx-auto flex min-h-full w-full max-w-lg flex-col gap-6 px-4 py-6">
         {children}

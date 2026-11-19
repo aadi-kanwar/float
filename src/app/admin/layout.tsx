@@ -10,7 +10,7 @@ import {
   useMe,
   AdminHubLink,
 } from "@/components/app/session";
-import { ADMIN_NAV } from "@/components/nav/nav-items";
+import { ADMIN_NAV as BASE_NAV, namedNav } from "@/components/nav/nav-items";
 import { AppSidebar, BottomNav } from "@/components/nav/app-nav";
 import { LoadingState } from "@/components/ui/skeleton";
 import { NotAuthorizedState } from "@/components/ui/states";
@@ -27,6 +27,7 @@ export default function AdminLayout({
     else if (me?.mustChangePassword) router.replace(destinationFor(me));
   }, [me, router]);
 
+  const ADMIN_NAV = namedNav(BASE_NAV, me?.pointsName);
   if (me === undefined || me === null || me.mustChangePassword) {
     return (
       <div className="mx-auto max-w-5xl p-4">

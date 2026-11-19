@@ -110,7 +110,7 @@ export async function errorCode(promise: Promise<unknown>): Promise<string> {
 
 /** Sets "now" to an India time, e.g. "2027-04-30T23:59:00". */
 export function setIndiaTime(local: string) {
-  vi.useFakeTimers({ toFake: ["Date"] });
+  if (!vi.isFakeTimers()) vi.useFakeTimers({ toFake: ["Date"] });
   vi.setSystemTime(new Date(`${local}+05:30`));
 }
 

@@ -19,6 +19,7 @@ import { appError } from "./lib/errors";
 import { adminQuery, internalMutation, residentQuery } from "./lib/functions";
 import { monthOutstanding, replay, voidIds, type LedgerRow } from "./lib/ledger";
 import { formatPaise } from "./lib/money";
+import { awardPoints, expirePoints } from "./lib/points";
 import { currentSettings } from "./lib/settings";
 import { dueDateFor, endOfDay, istDate, istMonth, istStartOfDay, shiftDate, shiftMonth, statementTime } from "./lib/time";
 import type { SettingsValues } from "./lib/validators";
@@ -68,6 +69,8 @@ export async function generateStatement(
     href: "/me/statements",
     key: `statement:${month}`,
   });
+  // Paid before the statement was made: early points are given now.
+  await awardPoints(ctx, resident._id, undefined);
   return id;
 }
 
@@ -163,7 +166,7 @@ export const monthEndJob = internalMutation({
   handler: async (ctx) => ({ statements: await closeMonths(ctx, Date.now()) }),
 });
 
-/** Scheduled 00:05 India time: catch-up statements, late fees, reminders. */
+/** Scheduled 00:05 India time: catch-up statements, late fees, reminders, points expiry. */
 export const dailyJob = internalMutation({
   args: {},
   handler: async (ctx) => {
@@ -171,8 +174,12 @@ export const dailyJob = internalMutation({
     const statements = await closeMonths(ctx, now);
     const settings = await currentSettings(ctx);
     let lateFees = 0;
-    for (const resident of await ctx.db.query("residents").collect()) lateFees += await applyLateFees(ctx, resident, settings, now);
-    return { statements, lateFees };
+    let pointsExpired = 0;
+    for (const resident of await ctx.db.query("residents").collect()) {
+      lateFees += await applyLateFees(ctx, resident, settings, now);
+      pointsExpired += await expirePoints(ctx, resident._id, now);
+    }
+    return { statements, lateFees, pointsExpired };
   },
 });
 

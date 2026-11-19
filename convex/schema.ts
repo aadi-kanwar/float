@@ -1,7 +1,7 @@
 import { authTables } from "@convex-dev/auth/server";
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
-import { vDrawStatus, vLedgerType, vRole, vSettingsValues } from "./lib/validators";
+import { vDrawStatus, vLedgerType, vPointsEntryType, vPointsRuleType, vRole, vSettingsValues } from "./lib/validators";
 
 /**
  * Float: deposit-backed pocket money for PG residents, with points and a
@@ -217,6 +217,75 @@ export default defineSchema({
   })
     .index("by_resident_createdAt", ["residentId", "createdAt"])
     .index("by_resident_key", ["residentId", "key"]),
+
+  // ---- Points --------------------------------------------------------------
+
+  /**
+   * How points are earned (admin-editable). Points are earned only on the
+   * principal repaid on a statement paid in full by its deadline:
+   *   base    pointsPer100: points per ₹100 of principal
+   *   early   multiplierPct (200 = 2×) when paid before the statement is made
+   *   streak  multiplierPct after `streakLength` on-time statements in a row
+   *           (the highest one reached applies)
+   * Multipliers multiply together.
+   */
+  pointsRules: defineTable({
+    type: vPointsRuleType,
+    pointsPer100: v.optional(v.number()),
+    multiplierPct: v.optional(v.number()),
+    streakLength: v.optional(v.number()),
+    enabled: v.boolean(),
+    sortOrder: v.number(),
+    createdAt: v.number(),
+  }).index("by_sortOrder", ["sortOrder"]),
+
+  /**
+   * Every points change, never edited or deleted (append-only). `points` is
+   * signed: + earned/refunded/grants, − redeemed/expired/deductions. A
+   * balance is always the sum.
+   */
+  pointsLedger: defineTable({
+    residentId: v.id("residents"),
+    type: vPointsEntryType,
+    points: v.number(),
+    /** Earned: the statement month it was for. */
+    statementMonth: v.optional(v.string()),
+    /** Earned: when unused points expire (absent = never). */
+    expiresAt: v.optional(v.number()),
+    /** Expired: the earned row whose unused points expired. */
+    lotId: v.optional(v.id("pointsLedger")),
+    /** Refunded: the redeemed row it gives back. */
+    refundOf: v.optional(v.id("pointsLedger")),
+    redemptionId: v.optional(v.string()),
+    reason: v.optional(v.string()),
+    createdAt: v.number(),
+    createdBy: v.optional(v.id("users")),
+  })
+    .index("by_resident_createdAt", ["residentId", "createdAt"])
+    .index("by_createdAt", ["createdAt"])
+    .index("by_type_expiresAt", ["type", "expiresAt"]),
+
+  /** One per resident per statement judged for points (makes awarding safe to repeat). */
+  pointsAwards: defineTable({
+    residentId: v.id("residents"),
+    month: v.string(),
+    points: v.number(),
+    streak: v.number(),
+    early: v.boolean(),
+    principalPaise: v.number(),
+    createdAt: v.number(),
+    /** Set if the payment was later reversed and the points taken back. */
+    clawedBackAt: v.optional(v.number()),
+  }).index("by_resident_month", ["residentId", "month"]),
+
+  /** "After N on-time statements in a row, raise the limit by X, up to Y." Used only when limit growth is on. */
+  limitRules: defineTable({
+    streakLength: v.number(),
+    raisePaise: v.number(),
+    maxPaise: v.number(),
+    enabled: v.boolean(),
+    createdAt: v.number(),
+  }),
 
   // Sign-in abuse protection: failed attempts per phone.
   authAttemptLimits: defineTable({

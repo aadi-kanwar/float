@@ -16,6 +16,7 @@ export const DEFAULT_SETTINGS: SettingsValues = {
   dueSoonDays: 2,
   pointsName: "Points",
   pointsExpiryMonths: 12,
+  limitGrowthEnabled: false,
 };
 
 export async function settingsRow(ctx: Pick<QueryCtx, "db">): Promise<Doc<"settings"> | null> {
@@ -26,9 +27,11 @@ export async function settingsRow(ctx: Pick<QueryCtx, "db">): Promise<Doc<"setti
 }
 
 /** The settings in force now (defaults filled in for anything missing). */
-export async function currentSettings(ctx: Pick<QueryCtx, "db">): Promise<SettingsValues & { version: number }> {
+export async function currentSettings(
+  ctx: Pick<QueryCtx, "db">,
+): Promise<Required<SettingsValues> & { version: number }> {
   const row = await settingsRow(ctx);
-  return { ...DEFAULT_SETTINGS, ...(row?.values ?? {}), version: row?.version ?? 0 };
+  return { ...(DEFAULT_SETTINGS as Required<SettingsValues>), ...(row?.values ?? {}), version: row?.version ?? 0 };
 }
 
 /** A plain-language problem with new settings, or null if they are fine. */

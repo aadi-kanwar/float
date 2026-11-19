@@ -45,6 +45,27 @@ no access to Float.
   settlement, waivers, reversals, terms acceptance, in-app notifications,
   admin overview and queues. See "Money rules" below.
 
+- **Charts and calendar:** resident credit meter, deadline bar, deposit
+  meter; admin credit across residents, statement statuses, money in/out,
+  and a month calendar of money events. Chart colours (`--chart-*` in
+  `src/app/globals.css`) are Float-only tokens checked for colour-blind
+  separation; every colour comes with a label or icon.
+- **Phase 4 (points):** earn rules (base, early, streak; editable, can be
+  switched off and reordered), points ledger, 12-month expiry (soonest
+  first; only unused points expire), manual give/take, limit growth rules
+  (off by default), points name everywhere from Settings.
+
+## Points rules (as built)
+
+- Earned only on principal repaid, for a statement paid in full by its
+  deadline, once per statement; given when the admin confirms the payment
+  that completes it (or when the statement is made, for early payment).
+- Early and streak multipliers multiply together; the highest streak reached
+  applies. A late statement earns 0 and resets the streak. Statements with
+  only older dues carried over are skipped.
+- If a payment is later reversed and the statement is no longer on time, its
+  points are taken back.
+
 ## Money rules (as built)
 
 - What anyone owes is never stored: `convex/lib/ledger.ts` replays the

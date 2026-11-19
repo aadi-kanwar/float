@@ -1,6 +1,7 @@
 import {
   ArrowDownToLine,
   ArrowUpFromLine,
+  Sparkles,
   Building2,
   FileText,
   House,
@@ -27,6 +28,7 @@ export const ADMIN_NAV: NavItem[] = [
   { href: "/admin/draws", label: "Draws", icon: ArrowUpFromLine },
   { href: "/admin/repayments", label: "Repayments", icon: ArrowDownToLine },
   { href: "/admin/statements", label: "Statements", icon: FileText, mobile: false },
+  { href: "/admin/points", label: "Points", icon: Sparkles, mobile: false },
   { href: "/admin/pgs", label: "PGs", icon: Building2, mobile: false },
   { href: "/admin/audit", label: "Audit log", icon: ScrollText, mobile: false },
   { href: "/admin/settings", label: "Settings", icon: Settings, mobile: false },
@@ -36,6 +38,12 @@ export const ADMIN_NAV: NavItem[] = [
 export const RESIDENT_NAV: NavItem[] = [
   { href: "/me", label: "Home", icon: House },
   { href: "/me/statements", label: "Statements", icon: FileText },
+  { href: "/me/points", label: "Points", icon: Sparkles },
   { href: "/me/activity", label: "Activity", icon: ListOrdered },
   { href: "/me/account", label: "Account", icon: UserRound },
 ];
+
+/** The points tab wears the admin's name for the points (never a hard-coded "Points"). */
+export function namedNav(items: NavItem[], pointsName: string | undefined): NavItem[] {
+  return items.map((item) => (item.href.endsWith("/points") && pointsName ? { ...item, label: pointsName } : item));
+}

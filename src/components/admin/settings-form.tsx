@@ -27,6 +27,7 @@ type Form = {
   dueSoonDays: string;
   pointsName: string;
   pointsExpiryMonths: string;
+  limitGrowthEnabled: boolean;
 };
 
 const rupees = (paise: number) => String(paise / 100);
@@ -45,6 +46,7 @@ function toForm(s: SettingsValues): Form {
     dueSoonDays: String(s.dueSoonDays),
     pointsName: s.pointsName,
     pointsExpiryMonths: String(s.pointsExpiryMonths),
+    limitGrowthEnabled: s.limitGrowthEnabled === true,
   };
 }
 
@@ -70,6 +72,7 @@ function fromForm(f: Form): SettingsValues {
     dueSoonDays: wholeNumber("Reminder", f.dueSoonDays),
     pointsName: f.pointsName,
     pointsExpiryMonths: wholeNumber("Points expiry", f.pointsExpiryMonths),
+    limitGrowthEnabled: f.limitGrowthEnabled,
   };
 }
 
@@ -157,7 +160,10 @@ export function SettingsForm() {
         <Card>
           <CardBody className="grid gap-4 sm:grid-cols-2">
             {text("pointsName", "Name of the points", "Shown to residents everywhere, e.g. \"Points\" or \"Coins\".", "text")}
-            {text("pointsExpiryMonths", "Points expire after (months)", "0 = never.")}
+            {text("pointsExpiryMonths", `${form.pointsName || "Points"} expire after (months)`, "0 = never.")}
+            <div className="sm:col-span-2">
+              <Toggle id="s-growth" label="Raise limits automatically" hint="Uses the limit growth rules on the rewards page." checked={form.limitGrowthEnabled} onChange={set("limitGrowthEnabled")} />
+            </div>
           </CardBody>
         </Card>
       </section>

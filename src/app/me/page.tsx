@@ -5,6 +5,7 @@ import Link from "next/link";
 import { api } from "@convex/_generated/api";
 import { Eyebrow } from "@/components/app/brand";
 import { useMe } from "@/components/app/session";
+import { PointsCard } from "@/components/points/points-card";
 import {
   CreditMeter,
   DepositMeter,
@@ -98,6 +99,7 @@ export default function ResidentHome() {
               month.
             </p>
           ) : null}
+          <PointsCard />
           <DepositMeter s={s} />
         </>
       )}

@@ -33,6 +33,8 @@ export const vSettingsValues = v.object({
   pointsName: v.string(),
   /** Points expire this many months after being earned (0 = never). */
   pointsExpiryMonths: v.number(),
+  /** Raise limits automatically by the limit-growth rules (off by default). */
+  limitGrowthEnabled: v.optional(v.boolean()),
 });
 export type SettingsValues = Infer<typeof vSettingsValues>;
 
@@ -54,3 +56,14 @@ export const vDrawStatus = v.union(
   v.literal("cancelled"),
 );
 export type DrawStatus = Infer<typeof vDrawStatus>;
+
+export const vPointsRuleType = v.union(v.literal("base"), v.literal("early"), v.literal("streak"));
+export type PointsRuleType = Infer<typeof vPointsRuleType>;
+
+export const vPointsEntryType = v.union(
+  v.literal("earned"),
+  v.literal("redeemed"),
+  v.literal("refunded"),
+  v.literal("expired"),
+  v.literal("manual"),
+);
