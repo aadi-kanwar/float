@@ -14,7 +14,8 @@ import { Card, CardBody } from "@/components/ui/card";
 import { Dialog, DialogClose, DialogContent, DialogFooter, DialogTrigger } from "@/components/ui/dialog";
 import { Field } from "@/components/ui/field";
 import { FilterBar } from "@/components/ui/filter-bar";
-import { Input } from "@/components/ui/input";
+import { Input, inputClasses } from "@/components/ui/input";
+import { cn } from "@/lib/utils";
 import { NativeSelect } from "@/components/ui/native-select";
 import { PageHeader } from "@/components/ui/page-header";
 import { LoadingState } from "@/components/ui/skeleton";
@@ -98,6 +99,7 @@ export default function RedemptionsAdminPage() {
                   {r.answers.filter((a) => a.value).map((a) => (
                     <span key={a.label} className="text-sm"><span className="text-foreground-secondary">{a.label}:</span> {a.value}</span>
                   ))}
+                  {r.redeemInfo ? <span className="rounded-sm bg-subtle px-2 py-1 font-mono text-sm break-all">{r.redeemInfo}</span> : null}
                   {r.status !== "rejected" && r.status !== "cancelled" ? <MoveDialog redemptionId={r.redemptionId} current={r.status} title={r.perkTitle} /> : null}
                 </div>
                 <RedemptionTimeline status={r.status} history={r.history} />
@@ -117,9 +119,10 @@ function MoveDialog({ redemptionId, current, title }: { redemptionId: Id<"redemp
   const [open, setOpen] = useState(false);
   const [to, setTo] = useState<RedemptionStatus>(next);
   const [note, setNote] = useState("");
+  const [info, setInfo] = useState("");
   const [busy, setBusy] = useState(false);
   return (
-    <Dialog open={open} onOpenChange={(o) => { setOpen(o); if (o) { setTo(next); setNote(""); } }}>
+    <Dialog open={open} onOpenChange={(o) => { setOpen(o); if (o) { setTo(next); setNote(""); setInfo(""); } }}>
       <DialogTrigger asChild>
         <Button className="self-start">Update status</Button>
       </DialogTrigger>
@@ -130,7 +133,7 @@ function MoveDialog({ redemptionId, current, title }: { redemptionId: Id<"redemp
             e.preventDefault();
             setBusy(true);
             try {
-              await setStatus({ redemptionId, status: to, note: note || undefined });
+              await setStatus({ redemptionId, status: to, note: note || undefined, info: info || undefined });
               toast.success("Updated.");
               setOpen(false);
             } catch (error) {
@@ -152,6 +155,11 @@ function MoveDialog({ redemptionId, current, title }: { redemptionId: Id<"redemp
               </NativeSelect>
             )}
           </Field>
+          {to !== "rejected" && to !== "cancelled" ? (
+            <Field id="mv-info" label="Code, link or details for the resident (optional)" hint="e.g. a voucher code, a booking link, or where to collect it. Shown big on their screen with a Copy button.">
+              {(p) => <textarea {...p} className={cn(inputClasses, "min-h-20 py-2")} value={info} onChange={(e) => setInfo(e.target.value)} maxLength={1000} />}
+            </Field>
+          ) : null}
           <Field id="mv-note" label="Note (optional)">
             {(p) => <Input {...p} value={note} onChange={(e) => setNote(e.target.value)} maxLength={300} />}
           </Field>

@@ -5,7 +5,7 @@ export default function manifest(): MetadataRoute.Manifest {
     id: "/",
     name: "Livoza Float",
     short_name: "Float",
-    description: "Pocket money against your deposit, points and perks.",
+    description: "Pocket money, points and perks.",
     start_url: "/",
     scope: "/",
     display: "standalone",

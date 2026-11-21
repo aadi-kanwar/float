@@ -16,15 +16,21 @@ import { toast } from "@/components/ui/toaster";
 import { useQuery } from "@/lib/convex";
 import { friendlyError } from "@/lib/errors";
 import { formatPaise } from "@/lib/format";
+import { drawFeePaise } from "@convex/lib/money";
 
 export default function DrawPage() {
   const router = useRouter();
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
   const rupees = /^\d+$/.test(text.trim()) ? Number(text.trim()) : undefined;
-  const p = useQuery(api.draws.preview, { amountRupees: rupees });
+  // Asked once (no amount): typing doesn't go to the server, so nothing flickers.
+  // The fee is worked out here with the same rule the server uses.
+  const base = useQuery(api.draws.preview, {});
   const request = useMutation(api.draws.request);
-  if (p === undefined) return <LoadingState rows={4} />;
+  if (base === undefined) return <LoadingState rows={4} />;
+  const amountPaise = rupees !== undefined && rupees > 0 ? rupees * 100 : 0;
+  const feePaise = drawFeePaise(amountPaise, base.feeBasisPoints);
+  const p = { ...base, amountPaise, feePaise, totalPaise: amountPaise + feePaise };
   const tooMuch = p.totalPaise > 0 && p.amountPaise > p.availablePaise;
   const tooLittle = p.amountPaise > 0 && p.amountPaise < p.minDrawPaise;
   const blocked = p.paused || p.frozen || !p.termsAccepted;
@@ -36,6 +42,11 @@ export default function DrawPage() {
       {!p.termsAccepted ? (
         <Banner tone="info" title="Please accept the terms first" action={<Button asChild><Link href="/me/terms">Read terms</Link></Button>}>
           You only need to do this once (and again if they change).
+        </Banner>
+      ) : null}
+      {!p.payoutSet ? (
+        <Banner tone="info" title="Where should we send it?" action={<Button asChild><Link href="/me/account">Add UPI</Link></Button>}>
+          Add your UPI ID or QR in Account so the office can pay you.
         </Banner>
       ) : null}
       <p className="text-sm text-foreground-secondary">You can draw up to {formatPaise(p.availablePaise)} now.</p>

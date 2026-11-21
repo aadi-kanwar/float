@@ -1,7 +1,7 @@
 # Float (by Livoza)
 
-Deposit-backed pocket money for PG residents. A resident draws small
-amounts against their security deposit, repays by a monthly deadline, pays
+Pocket money for PG residents. A resident draws small
+amounts up to their limit, repays by a monthly deadline, pays
 a small fee, and earns points for repaying on time. Points are spent in a
 Perk Store run by the admin.
 
@@ -25,7 +25,7 @@ no access to Float.
 
 - **Livoza Hub** (the normal way): admins and residents open Float from the
   hub, already signed in (12-hour login). Residents are created here
-  automatically by the hub; the admin then sets their deposit and limit.
+  automatically by the hub; the admin can set their limit.
 - **Float's own login** (backup until `HUB_ONLY=true`): mobile number
   (+91 by default) + password. No sign-up: an admin adds a resident with a
   temporary password they must change at first sign-in. 5 wrong passwords
@@ -36,17 +36,15 @@ no access to Float.
 ## Built so far
 
 - **Phase 2 (foundation):** design system, sign-in, roles, residents
-  (add, edit, deposit, limit, pause/resume, reset password), PGs, Settings
+  (add, edit, limit, pause/resume, reset password), PGs, Settings
   (versioned, every change audit-logged), audit log, first-admin seed,
   deploy-key wiring.
 - **Phase 3 (money engine):** draws (ask → approve → mark sent), "I've
   paid" and admin confirmation, monthly statements (last day, 23:59 IST),
-  daily late fees after the deadline (cap, safe to run twice), deposit
-  settlement, waivers, reversals, terms acceptance, in-app notifications,
+  daily late fees after the deadline (cap, safe to run twice), waivers, reversals, terms acceptance, in-app notifications,
   admin overview and queues. See "Money rules" below.
 
-- **Charts and calendar:** resident credit meter, deadline bar, deposit
-  meter; admin credit across residents, statement statuses, money in/out,
+- **Charts and calendar:** resident credit meter, deadline bar; admin credit across residents, statement statuses, money in/out,
   and a month calendar of money events. Chart colours (`--chart-*` in
   `src/app/globals.css`) are Float-only tokens checked for colour-blind
   separation; every colour comes with a label or icon.
@@ -85,16 +83,25 @@ no access to Float.
   it. Money rules, points and the Perk Store are organisation-wide. Each
   resident belongs to one property.
 
+- **November 2026 changes:** no security deposits anywhere (old data
+  fields are kept hidden only so older rows stay valid); residents add a
+  UPI ID and/or QR photo (Account), the admin sees them under **Send money**
+  and **Pay & mark sent** (with a generated UPI QR), and records the mode of
+  payment and an optional UTR; a code / link / details box when updating a
+  redemption, shown big to the resident; Draw page works out the fee on the
+  device (no loading flash); Activity in the bottom bar, Statements under
+  More; a Back button on every screen that isn't a tab; new points rules
+  (below).
+
 ## Points rules (as built)
 
-- Earned only on principal repaid, for a statement paid in full by its
-  deadline, once per statement; given when the admin confirms the payment
-  that completes it (or when the statement is made, for early payment).
-- Early and streak multipliers multiply together; the highest streak reached
-  applies. A late statement earns 0 and resets the streak. Statements with
-  only older dues carried over are skipped.
-- If a payment is later reversed and the statement is no longer on time, its
-  points are taken back.
+- 1 point per ₹1 of drawn money repaid (fees and late fees never earn),
+  given as soon as the admin confirms the payment, any day. A reversed
+  payment's points come off again.
+- What points are worth is a setting: `pointValueBasisPoints` (100 = 1%, so
+  1,000 points = ₹10), in Settings → Rewards.
+- Points expire after the set number of months; limit growth (optional)
+  still follows on-time statements in a row.
 
 ## Money rules (as built)
 

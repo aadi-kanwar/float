@@ -1,11 +1,12 @@
 "use client";
 
-import { ChevronRight, Flame, Sparkles } from "lucide-react";
+import { ChevronRight, Sparkles } from "lucide-react";
 import Link from "next/link";
 import { api } from "@convex/_generated/api";
 import { Card } from "@/components/ui/card";
 import { Icon } from "@/components/ui/icon";
 import { useQuery } from "@/lib/convex";
+import { formatPaise } from "@/lib/format";
 
 /** Home: the points balance and streak, linking to the points page. */
 export function PointsCard() {
@@ -21,10 +22,7 @@ export function PointsCard() {
           <span className="tabular text-lg font-semibold">
             {p.balance.toLocaleString("en-IN")} {p.pointsName}
           </span>
-          <span className="flex items-center gap-1 text-sm text-foreground-secondary">
-            <Icon icon={Flame} className="size-3.5 text-chart-owed" />
-            {p.streak} on time in a row
-          </span>
+          <span className="text-sm text-foreground-secondary">Worth {formatPaise(p.balanceValuePaise)}</span>
         </span>
         <ChevronRight className="size-4 text-foreground-muted" aria-hidden />
       </Link>

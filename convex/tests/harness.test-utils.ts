@@ -75,14 +75,13 @@ export const PASSWORD = "plain-tea-42";
 export async function createResident(
   t: T,
   admin: Admin,
-  details: Partial<{ name: string; depositRupees: number; roomNumber: string; phone: string }> = {},
+  details: Partial<{ name: string; roomNumber: string; phone: string }> = {},
 ) {
   const phone = details.phone ?? nextPhone();
   const { residentId } = await admin.as.action(api.residents.create, {
     name: details.name ?? "Test Resident",
     phone,
     roomNumber: details.roomNumber ?? "101",
-    depositRupees: details.depositRupees ?? 10_000,
     temporaryPassword: PASSWORD,
   });
   const userId = await t.run(async (ctx) => {

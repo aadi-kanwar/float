@@ -3,8 +3,7 @@ import type { MutationCtx } from "../_generated/server";
 import { awardPoints } from "./points";
 
 /**
- * Runs after every confirmed payment, waiver, reversal or deposit
- * settlement: gives points for statements now paid on time (or takes them
+ * Runs after every confirmed payment, waiver, reversal  * settlement: gives points for statements now paid on time (or takes them
  * back if a reversal undid that).
  */
 export async function afterCredit(

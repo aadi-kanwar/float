@@ -33,8 +33,7 @@ export const LEDGER_LABEL: Record<string, string> = {
   repayment: "Payment",
   waiver: "Waived",
   reversal: "Correction (reversal)",
-  depositAdjustment: "Settled from deposit",
 };
 
 /** Rows that lower what's owed show with a minus. */
-export const isCredit = (type: string) => type === "repayment" || type === "waiver" || type === "depositAdjustment";
+export const isCredit = (type: string) => type === "repayment" || type === "waiver";

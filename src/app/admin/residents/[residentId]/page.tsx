@@ -2,14 +2,12 @@
 
 import { useAction, useMutation } from "convex/react";
 import {
-  ArrowLeft,
   CirclePause,
   CirclePlay,
   KeyRound,
   Link2,
   Pencil,
 } from "lucide-react";
-import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useState } from "react";
 import { api } from "@convex/_generated/api";
@@ -20,6 +18,7 @@ import { OneTimePassword } from "@/components/admin/one-time-password";
 import { ReasonDialog } from "@/components/admin/reason-dialog";
 import { PgSelect } from "@/components/admin/residents";
 import { ResidentMoney } from "@/components/admin/resident-money";
+import { PayoutEditor, SendMoneyDialog } from "@/components/admin/send-money";
 import { ResidentPoints } from "@/components/admin/points-admin";
 import { useMe } from "@/components/app/session";
 import { Banner } from "@/components/ui/banner";
@@ -47,19 +46,13 @@ import { formatDateTime } from "@/lib/format";
 export default function ResidentPage() {
   const { residentId } = useParams<{ residentId: Id<"residents"> }>();
   const r = useQuery(api.residents.get, { residentId });
-  const setDeposit = useMutation(api.residents.setDeposit);
+  const setPayout = useMutation(api.residents.setPayout);
+  const qrUploadUrl = useMutation(api.residents.qrUploadUrl);
   const setLimit = useMutation(api.residents.setLimit);
   const setPaused = useMutation(api.residents.setPaused);
   if (r === undefined) return <LoadingState rows={6} />;
   return (
     <>
-      <Link
-        href="/admin/residents"
-        className="inline-flex items-center gap-1 self-start text-sm text-foreground-secondary hover:text-foreground"
-      >
-        <Icon icon={ArrowLeft} className="size-4" />
-        Residents
-      </Link>
       <PageHeader
         title={r.name}
         description={
@@ -93,10 +86,10 @@ export default function ResidentPage() {
       ) : null}
       <ResidentMoney
         residentId={residentId}
-        recordedDepositPaise={r.depositPaise}
         ownLimit={r.ownLimit}
         actions={
           <>
+            <SendMoneyDialog name={r.name} upiId={r.upiId} upiQrUrl={r.upiQrUrl} />
             <ReasonDialog
               trigger={<Button variant="secondary">Change limit</Button>}
               title="Change credit limit"
@@ -108,15 +101,6 @@ export default function ResidentPage() {
               }}
               onSave={(rupees, reason) =>
                 setLimit({ residentId, limitRupees: rupees, reason })
-              }
-            />
-            <ReasonDialog
-              trigger={<Button variant="secondary">Change deposit</Button>}
-              title="Change recorded deposit"
-              description="The security deposit they paid. Settling dues from it is done separately and keeps its own record."
-              amount={{ label: "Deposit (₹)", initial: r.depositPaise / 100 }}
-              onSave={(rupees, reason) =>
-                setDeposit({ residentId, depositRupees: rupees ?? 0, reason })
               }
             />
             <ReasonDialog
@@ -158,6 +142,23 @@ export default function ResidentPage() {
           />
         </CardBody>
       </Card>
+      <section aria-labelledby="payout" className="flex flex-col gap-2">
+        <h2 id="payout" className="font-serif text-2xl tracking-tight">
+          Payment details
+        </h2>
+        <Card>
+          <CardBody>
+            <PayoutEditor
+              key={`${r.upiId}-${r.upiQrId}`}
+              initialUpiId={r.upiId}
+              initialQrId={r.upiQrId}
+              initialQrUrl={r.upiQrUrl}
+              uploadUrl={() => qrUploadUrl({})}
+              save={(upiId, upiQrId) => setPayout({ residentId, upiId, upiQrId })}
+            />
+          </CardBody>
+        </Card>
+      </section>
       <section aria-labelledby="points" className="flex flex-col gap-2">
         <h2 id="points" className="font-serif text-2xl tracking-tight">
           Rewards

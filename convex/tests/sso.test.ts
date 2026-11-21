@@ -74,15 +74,15 @@ describe("10. Livoza Hub sign-in", () => {
     await as.query(api.residents.list, {}); // admin functions work
   });
 
-  test("a valid resident ticket makes (or updates) the resident; deposit and limit stay Float's", async () => {
+  test("a valid resident ticket makes (or updates) the resident; the limit stays Float's", async () => {
     const t = await setupTest();
     const admin = await createAdmin(t);
     await ssoSignIn(t, await sign(RESIDENT_CLAIMS));
     const list = await admin.as.query(api.residents.list, {});
-    expect(list).toMatchObject([{ name: "Kabir Singh", roomNumber: "305", propertyName: "Livoza Koramangala", depositPaise: 0, fromHub: true }]);
-    await admin.as.mutation(api.residents.setDeposit, { residentId: list[0].residentId, depositRupees: 6000, reason: "Paid at check-in" });
+    expect(list).toMatchObject([{ name: "Kabir Singh", roomNumber: "305", propertyName: "Livoza Koramangala", limitPaise: 500_000, fromHub: true }]);
+    await admin.as.mutation(api.residents.setLimit, { residentId: list[0].residentId, limitRupees: 6000, reason: "Trusted" });
     await ssoSignIn(t, await sign({ ...RESIDENT_CLAIMS, roomNumber: "306" }));
-    expect((await admin.as.query(api.residents.list, {}))[0]).toMatchObject({ roomNumber: "306", depositPaise: 600_000 });
+    expect((await admin.as.query(api.residents.list, {}))[0]).toMatchObject({ roomNumber: "306", limitPaise: 600_000 });
   });
 
   test("expired, wrong audience, wrong issuer, tampered, wrong role and reused tickets are refused the same way", async () => {

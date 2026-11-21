@@ -16,7 +16,7 @@ import { friendlyError } from "@/lib/errors";
 /** The form keeps text; it's turned into paise / basis points on save. */
 type Form = {
   defaultLimit: string;
-  limitCappedByDeposit: boolean;
+  pointValuePct: string;
   minDraw: string;
   feePercent: string;
   dueDayOfMonth: string;
@@ -35,7 +35,7 @@ const rupees = (paise: number) => String(paise / 100);
 function toForm(s: SettingsValues): Form {
   return {
     defaultLimit: rupees(s.defaultLimitPaise),
-    limitCappedByDeposit: s.limitCappedByDeposit,
+    pointValuePct: String((s.pointValueBasisPoints ?? 100) / 100),
     minDraw: rupees(s.minDrawPaise),
     feePercent: String(s.feeBasisPoints / 100),
     dueDayOfMonth: String(s.dueDayOfMonth),
@@ -56,12 +56,19 @@ function wholeNumber(label: string, text: string): number {
   return Number(t);
 }
 
+/** "1" or "0.5" (% of ₹1) -> basis points. */
+function pointValueBp(text: string): number {
+  const t = text.trim();
+  if (!/^\d+(\.\d{1,2})?$/.test(t)) throw new Error("Point value: enter a percentage like 1 or 0.5.");
+  return Math.round(Number(t) * 100);
+}
+
 function fromForm(f: Form): SettingsValues {
   const fee = f.feePercent.trim();
   if (!/^\d+(\.\d{1,2})?$/.test(fee)) throw new Error("Fee: enter a percentage like 5 or 2.5.");
   return {
     defaultLimitPaise: wholeNumber("Default limit", f.defaultLimit) * 100,
-    limitCappedByDeposit: f.limitCappedByDeposit,
+    pointValueBasisPoints: pointValueBp(f.pointValuePct),
     minDrawPaise: wholeNumber("Minimum draw", f.minDraw) * 100,
     feeBasisPoints: Math.round(Number(fee) * 100),
     dueDayOfMonth: wholeNumber("Deadline day", f.dueDayOfMonth),
@@ -74,6 +81,11 @@ function fromForm(f: Form): SettingsValues {
     pointsExpiryMonths: wholeNumber("Points expiry", f.pointsExpiryMonths),
     limitGrowthEnabled: f.limitGrowthEnabled,
   };
+}
+
+function valueOf1000(pct: string): string {
+  const n = Number(pct);
+  return Number.isFinite(n) ? `₹${(n * 10).toLocaleString("en-IN", { maximumFractionDigits: 2 })}` : "—";
 }
 
 function Toggle({ id, label, hint, checked, onChange }: { id: string; label: string; hint: string; checked: boolean; onChange: (v: boolean) => void }) {
@@ -146,7 +158,6 @@ export function SettingsForm() {
             {text("lateFeeCap", "Late fee cap per statement (₹)", "Leave empty for no cap.")}
             {text("dueSoonDays", "\"Due soon\" reminder (days before)")}
             <div className="flex flex-col gap-2 sm:col-span-2">
-              <Toggle id="s-cap" label="Limit can't be more than the deposit" hint="Money drawn can never be more than the deposit left (fees don't count)." checked={form.limitCappedByDeposit} onChange={set("limitCappedByDeposit")} />
               <Toggle id="s-approve" label="Draws need my approval" hint="Off: draws are approved at once (you still send the money and mark it sent)." checked={form.requireDrawApproval} onChange={set("requireDrawApproval")} />
               <Toggle id="s-freeze" label="No new draws while anything is overdue" hint="" checked={form.freezeWhenOverdue} onChange={set("freezeWhenOverdue")} />
             </div>
@@ -160,6 +171,7 @@ export function SettingsForm() {
         <Card>
           <CardBody className="grid gap-4 sm:grid-cols-2">
             {text("pointsName", "Name of the points", "Shown to residents everywhere, e.g. \"Points\" or \"Coins\".", "text")}
+            {text("pointValuePct", `Value of ${form.pointsName || "points"} (%)`, `Residents get 1 per ₹1 of drawn money repaid. At ${form.pointValuePct || "0"}%, 1,000 are worth ${valueOf1000(form.pointValuePct)}.`, "decimal")}
             {text("pointsExpiryMonths", `${form.pointsName || "Points"} expire after (months)`, "0 = never.")}
             <div className="sm:col-span-2">
               <Toggle id="s-growth" label="Raise limits automatically" hint="Uses the limit growth rules on the rewards page." checked={form.limitGrowthEnabled} onChange={set("limitGrowthEnabled")} />

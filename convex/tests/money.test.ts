@@ -6,8 +6,8 @@ import { replay, type LedgerRow } from "../lib/ledger";
 import { drawFeePaise } from "../lib/money";
 import { createAdmin, createResident, errorCode, setIndiaTime, setupTest, type Admin, type Resident, type T } from "./harness.test-utils";
 
-async function ready(t: T, admin: Admin, depositRupees = 10_000): Promise<Resident> {
-  const r = await createResident(t, admin, { depositRupees });
+async function ready(t: T, admin: Admin): Promise<Resident> {
+  const r = await createResident(t, admin);
   await r.as.mutation(api.terms.accept, { version: 0 });
   return r;
 }
@@ -77,15 +77,14 @@ describe("2. limit checks", () => {
     expect(await errorCode(r.as.mutation(api.draws.request, { amountRupees: 50 }))).toBe("INVALID_INPUT"); // below ₹100
   });
 
-  test("blocked above the deposit when that setting is on", async () => {
+  test("a resident's own limit is the only cap (there are no deposits)", async () => {
     const t = await setupTest();
     const admin = await createAdmin(t);
-    const r = await ready(t, admin, 2000);
+    const r = await ready(t, admin);
+    await admin.as.mutation(api.residents.setLimit, { residentId: r.residentId, limitRupees: 2000, reason: "New joiner" });
     expect(await errorCode(r.as.mutation(api.draws.request, { amountRupees: 2001 }))).toBe("LIMIT_EXCEEDED");
-    await r.as.mutation(api.draws.request, { amountRupees: 2000 }); // the whole deposit
-    const s = await admin.as.query(api.settings.get, {});
-    await admin.as.mutation(api.settings.save, { values: { ...s.values, limitCappedByDeposit: false }, expectedVersion: s.version });
-    await r.as.mutation(api.draws.request, { amountRupees: 3000 }); // now up to ₹5,000
+    await r.as.mutation(api.draws.request, { amountRupees: 2000 });
+    expect((await r.as.query(api.money.mySummary, {})) as object).not.toHaveProperty("depositBalancePaise");
   });
 
   test("blocked while overdue (when frozen), while paused, and before accepting the terms", async () => {
@@ -316,22 +315,19 @@ describe("8. settings changes only affect the future", () => {
 });
 
 describe("overrides and access", () => {
-  test("waive, settle from deposit (deposit and limit go down), all audit-logged", async () => {
+  test("waive part of a fee, audit-logged", async () => {
     const t = await setupTest();
     setIndiaTime("2027-04-10T12:00:00");
     const admin = await createAdmin(t);
-    const r = await ready(t, admin, 5000);
+    const r = await ready(t, admin);
     await drawAndSend(r, admin, 1000);
     await admin.as.mutation(api.money.waive, { residentId: r.residentId, month: "2027-04", bucket: "fee", amountRupees: 20, reason: "Goodwill" });
     expect(await owed(r)).toBe(103_000);
     expect(
       await errorCode(admin.as.mutation(api.money.waive, { residentId: r.residentId, month: "2027-04", bucket: "fee", amountRupees: 31, reason: "Too much" })),
     ).toBe("INVALID_INPUT");
-    await admin.as.mutation(api.money.settleFromDeposit, { residentId: r.residentId, amountRupees: 1030, reason: "Moving out" });
-    const s = await r.as.query(api.money.mySummary, {});
-    expect(s).toMatchObject({ outstandingPaise: 0, depositBalancePaise: 397_000, limitPaise: 397_000 });
     const audit = await t.run((ctx) => ctx.db.query("auditLog").collect());
-    expect(audit.map((a) => a.action)).toEqual(expect.arrayContaining(["ledger.waived", "deposit.settled", "draw.disbursed"]));
+    expect(audit.map((a) => a.action)).toEqual(expect.arrayContaining(["ledger.waived", "draw.disbursed"]));
   });
 
   test("residents can't reach the admin's money functions or anyone else's draws", async () => {
@@ -346,13 +342,26 @@ describe("overrides and access", () => {
     expect(await errorCode(asha.as.query(api.draws.queue, {}))).toBe("FORBIDDEN");
     expect(await errorCode(asha.as.query(api.money.residentAccount, { residentId: ravi.residentId }))).toBe("FORBIDDEN");
     expect(await errorCode(asha.as.query(api.statements.residentDetail, { residentId: ravi.residentId, month: "2027-04" }))).toBe("FORBIDDEN");
-    expect(await errorCode(asha.as.mutation(api.money.settleFromDeposit, { residentId: asha.residentId, amountRupees: 1, reason: "self" }))).toBe(
-      "FORBIDDEN",
-    );
+    expect(await errorCode(asha.as.mutation(api.residents.setPayout, { residentId: ravi.residentId, upiId: "me@okaxis", upiQrId: null }))).toBe("FORBIDDEN");
     expect(await errorCode(asha.as.mutation(api.repayments.record, { residentId: asha.residentId, amountRupees: 1 }))).toBe("FORBIDDEN");
     expect((await asha.as.query(api.draws.mine, {})).length).toBe(0);
     // A resident can cancel only while it's still requested.
     await admin.as.mutation(api.draws.approve, { drawRequestId: draw });
     expect(await errorCode(ravi.as.mutation(api.draws.cancel, { drawRequestId: draw }))).toBe("CONFLICT");
   });
+});
+
+test("sending money: the resident's UPI ID, the mode of payment and an optional UTR", async () => {
+  const t = await setupTest();
+  const admin = await createAdmin(t);
+  const r = await ready(t, admin);
+  expect(await errorCode(r.as.mutation(api.residents.setMyPayout, { upiId: "not a upi", upiQrId: null }))).toBe("INVALID_INPUT");
+  await r.as.mutation(api.residents.setMyPayout, { upiId: "asha@okhdfcbank", upiQrId: null });
+  const id = await r.as.mutation(api.draws.request, { amountRupees: 700 });
+  const [row] = await admin.as.query(api.draws.queue, {});
+  expect(row).toMatchObject({ upiId: "asha@okhdfcbank" });
+  expect((await admin.as.query(api.residents.get, { residentId: r.residentId })).upiId).toBe("asha@okhdfcbank");
+  await admin.as.mutation(api.draws.markDisbursed, { drawRequestId: id, paymentMode: "cash" });
+  const [sent] = await r.as.query(api.draws.mine, {});
+  expect(sent).toMatchObject({ status: "disbursed", paymentMode: "cash", upiRef: null });
 });

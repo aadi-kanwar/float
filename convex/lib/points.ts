@@ -1,15 +1,17 @@
 /**
- * Points: earning, streaks, expiry and limit growth.
+ * Points (the owner's rules, November 2026):
  *
- * - Earned only on PRINCIPAL repaid (never fees or late fees), for a
- *   statement fully paid by its deadline, once per statement.
- * - Paid before the statement was made (in the same month): early bonus.
- * - Streak: on-time statements in a row (statements with nothing of their
- *   own are skipped). A late or overdue statement resets it to 0.
+ * - 1 point for every ₹1 of DRAWN money a resident repays. Fees and late
+ *   fees never earn points.
+ * - Given as soon as the admin confirms the payment, whatever day of the
+ *   month it is (counted per payment, so it's live).
+ * - If a payment is later reversed (or counts towards something else after
+ *   a correction), its points are adjusted to match. Safe to run any number
+ *   of times.
+ * - What a point is worth in rupees is a setting (Settings → Rewards).
  * - Points expire N months after being earned (setting; 0 = never). Spending
  *   uses the points that expire soonest first; only unused points expire.
- * - If a payment is reversed and a statement is no longer paid on time, the
- *   points it earned are taken back.
+ * - Limit growth (optional) still follows on-time statements in a row.
  */
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
@@ -19,55 +21,9 @@ import { replay, type MonthState } from "./ledger";
 import { formatPaise } from "./money";
 import { currentSettings } from "./settings";
 import { IST_OFFSET_MS } from "./time";
-import type { PointsRuleType } from "./validators";
 
 type Db = Pick<QueryCtx, "db">;
 type WDb = Pick<MutationCtx, "db">;
-
-export type Rule = {
-  type: PointsRuleType;
-  pointsPer100?: number;
-  multiplierPct?: number;
-  streakLength?: number;
-  enabled: boolean;
-  sortOrder: number;
-};
-
-/** Used until the admin changes the rules (then they are saved). */
-export const DEFAULT_RULES: Rule[] = [
-  { type: "base", pointsPer100: 5, enabled: true, sortOrder: 0 },
-  { type: "early", multiplierPct: 200, enabled: true, sortOrder: 1 },
-  { type: "streak", streakLength: 3, multiplierPct: 125, enabled: true, sortOrder: 2 },
-  { type: "streak", streakLength: 6, multiplierPct: 150, enabled: true, sortOrder: 3 },
-];
-
-export async function currentRules(ctx: Db): Promise<(Rule & { _id?: Id<"pointsRules"> })[]> {
-  const saved = await ctx.db.query("pointsRules").withIndex("by_sortOrder").collect();
-  return saved.length > 0 ? saved : DEFAULT_RULES;
-}
-
-/** Saves the default rules the first time an admin edits them. */
-export async function ensureRules(ctx: WDb): Promise<void> {
-  if ((await ctx.db.query("pointsRules").first()) !== null) return;
-  for (const r of DEFAULT_RULES) await ctx.db.insert("pointsRules", { ...r, createdAt: Date.now() });
-}
-
-/**
- * Points for one statement: floor(principal ₹ / 100 × base × multipliers).
- * Integer maths: multipliers are percentages.
- */
-export function pointsFor(principalPaise: number, early: boolean, streak: number, rules: Rule[]) {
-  const on = rules.filter((r) => r.enabled);
-  const base = on.filter((r) => r.type === "base").reduce((sum, r) => sum + (r.pointsPer100 ?? 0), 0);
-  const earlyPct = early ? Math.max(100, ...on.filter((r) => r.type === "early").map((r) => r.multiplierPct ?? 100)) : 100;
-  const streakRule = on
-    .filter((r) => r.type === "streak" && (r.streakLength ?? Infinity) <= streak)
-    .sort((a, b) => (b.streakLength ?? 0) - (a.streakLength ?? 0))[0];
-  const streakPct = streakRule?.multiplierPct ?? 100;
-  // principalPaise / 10_000 = hundreds of rupees
-  const points = Math.floor((principalPaise * base * earlyPct * streakPct) / (10_000 * 100 * 100));
-  return { points, base, earlyPct, streakPct };
-}
 
 const ON_TIME: StatementStatus[] = ["paid_early", "paid_on_time"];
 const ownCharges = (m: MonthState | undefined) => (m ? m.principal.charged + m.fee.charged + m.lateFee.charged : 0);
@@ -107,81 +63,77 @@ export function addMonthsMs(ms: number, n: number): number {
   return d.getTime() - IST_OFFSET_MS;
 }
 
+/** Points for an amount of principal: 1 per whole rupee. */
+export const pointsForPrincipal = (paise: number) => Math.floor(paise / 100);
+
+/** What a number of points is worth in paise, at the setting's value (basis points of ₹1 per point). */
+export const pointsValuePaise = (points: number, valueBasisPoints: number) => Math.floor((points * valueBasisPoints) / 100);
+
 /**
- * Gives points for every statement that is now paid on time and hasn't had
- * them yet, and takes them back from any that no longer is. Safe to run any
- * number of times. Runs after every payment, waiver, reversal or deposit
- * settlement, and when statements are made.
+ * Makes each repayment's points match the drawn money it paid off. Adds the
+ * difference (up for a new payment, down if one was reversed).
  */
-export async function awardPoints(ctx: WDb, residentId: Id<"residents">, actorUserId: Id<"users"> | undefined): Promise<number> {
+export async function syncRepaymentPoints(ctx: WDb, residentId: Id<"residents">, actorUserId: Id<"users"> | undefined): Promise<number> {
   const now = Date.now();
   const settings = await currentSettings(ctx);
-  const rules = await currentRules(ctx);
-  const resident = await ctx.db.get(residentId);
-  if (resident === null) return 0;
-  let given = 0;
-  for (const t of await statementTimeline(ctx, residentId, now)) {
-    const month = t.statement.month;
-    const award = await ctx.db
-      .query("pointsAwards")
-      .withIndex("by_resident_month", (q) => q.eq("residentId", residentId).eq("month", month))
-      .unique();
-    const onTime = ON_TIME.includes(t.status);
-    if (award === null && onTime) {
-      const early = t.status === "paid_early";
-      const principalPaise = t.month ? t.month.principal.paid : 0;
-      const { points } = pointsFor(principalPaise, early, t.streak, rules);
-      await ctx.db.insert("pointsAwards", { residentId, month, points, streak: t.streak, early, principalPaise, createdAt: now });
-      if (points > 0) {
-        await ctx.db.insert("pointsLedger", {
-          residentId,
-          type: "earned",
-          points,
-          statementMonth: month,
-          expiresAt: settings.pointsExpiryMonths > 0 ? addMonthsMs(now, settings.pointsExpiryMonths) : undefined,
-          reason: `${early ? "Paid early" : "Paid on time"}${t.streak >= 2 ? `, ${t.streak} in a row` : ""}`,
-          createdAt: now,
-        });
-        await notify(ctx, residentId, {
-          kind: "points_earned",
-          title: `You earned ${points} ${settings.pointsName}`,
-          body: `For paying your statement ${early ? "early" : "on time"}${t.streak >= 2 ? ` (${t.streak} in a row)` : ""}.`,
-          href: "/me/points",
-        });
-        given += points;
-      }
-      await writeAudit(ctx, {
-        actorUserId,
-        action: "points.earned",
-        entityType: "pointsAwards",
-        entityId: month,
+  const entries = await ledgerRows(ctx, residentId);
+  const account = replay(toRows(entries));
+  const expected = new Map<string, number>();
+  for (const e of entries) if (e.type === "repayment") expected.set(e._id, 0);
+  for (const a of account.allocations) if (a.bucket === "principal" && expected.has(a.creditId)) expected.set(a.creditId, expected.get(a.creditId)! + a.amountPaise);
+  const given = new Map<string, number>();
+  for (const p of await pointsRows(ctx, residentId)) if (p.sourceEntryId) given.set(p.sourceEntryId, (given.get(p.sourceEntryId) ?? 0) + p.points);
+  let added = 0;
+  for (const [entryId, principalPaise] of expected) {
+    const diff = pointsForPrincipal(principalPaise) - (given.get(entryId) ?? 0);
+    if (diff === 0) continue;
+    const sourceEntryId = entryId as Id<"ledgerEntries">;
+    if (diff > 0) {
+      await ctx.db.insert("pointsLedger", {
         residentId,
-        metadata: { month, points, streak: t.streak, early, principalPaise },
+        type: "earned",
+        points: diff,
+        sourceEntryId,
+        expiresAt: settings.pointsExpiryMonths > 0 ? addMonthsMs(now, settings.pointsExpiryMonths) : undefined,
+        reason: "For your repayment",
+        createdAt: now,
       });
-      if (settings.limitGrowthEnabled) await growLimit(ctx, resident, t.streak, actorUserId);
-    } else if (award !== null && !onTime && award.clawedBackAt === undefined && t.status !== "open") {
-      // The statement is no longer paid on time (e.g. a payment was reversed).
-      await ctx.db.patch(award._id, { clawedBackAt: now });
-      if (award.points > 0)
-        await ctx.db.insert("pointsLedger", {
-          residentId,
-          type: "manual",
-          points: -award.points,
-          reason: `Taken back: the ${month} statement is no longer paid on time`,
-          createdAt: now,
-          createdBy: actorUserId,
-        });
-      await writeAudit(ctx, {
-        actorUserId,
-        action: "points.clawed_back",
-        entityType: "pointsAwards",
-        entityId: month,
-        residentId,
-        metadata: { month, points: award.points },
+      await notify(ctx, residentId, {
+        kind: "points_earned",
+        title: `You earned ${diff.toLocaleString("en-IN")} ${settings.pointsName}`,
+        body: `For repaying ${formatPaise(diff * 100)} of money drawn.`,
+        href: "/me/points",
       });
+      added += diff;
+    } else {
+      await ctx.db.insert("pointsLedger", { residentId, type: "manual", points: diff, sourceEntryId, reason: "Payment corrected or reversed", createdAt: now, createdBy: actorUserId });
     }
+    await writeAudit(ctx, { actorUserId, action: diff > 0 ? "points.earned" : "points.clawed_back", entityType: "ledgerEntries", entityId: entryId, residentId, metadata: { points: diff } });
   }
-  return given;
+  return added;
+}
+
+/**
+ * Limit growth only (points no longer depend on statements): each statement
+ * that becomes paid on time is judged once; when the on-time streak reaches
+ * a rule's number, the limit goes up.
+ */
+export async function awardPoints(ctx: WDb, residentId: Id<"residents">, actorUserId: Id<"users"> | undefined): Promise<number> {
+  const added = await syncRepaymentPoints(ctx, residentId, actorUserId);
+  const settings = await currentSettings(ctx);
+  const resident = await ctx.db.get(residentId);
+  if (resident === null) return added;
+  for (const t of await statementTimeline(ctx, residentId)) {
+    if (!ON_TIME.includes(t.status)) continue;
+    const judged = await ctx.db
+      .query("pointsAwards")
+      .withIndex("by_resident_month", (q) => q.eq("residentId", residentId).eq("month", t.statement.month))
+      .unique();
+    if (judged !== null) continue;
+    await ctx.db.insert("pointsAwards", { residentId, month: t.statement.month, points: 0, streak: t.streak, early: t.status === "paid_early", principalPaise: t.month?.principal.paid ?? 0, createdAt: Date.now() });
+    if (settings.limitGrowthEnabled) await growLimit(ctx, (await ctx.db.get(residentId))!, t.streak, actorUserId);
+  }
+  return added;
 }
 
 /** Limit growth: each time the streak reaches a multiple of a rule's length, raise the limit (up to its maximum). */

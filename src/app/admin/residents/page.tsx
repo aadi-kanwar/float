@@ -6,7 +6,7 @@ import { PageHeader } from "@/components/ui/page-header";
 export default function ResidentsPage() {
   return (
     <>
-      <PageHeader title="Residents" description="Everyone who can draw pocket money. Open a resident to change their deposit, limit or access." actions={<AddResidentDialog />} />
+      <PageHeader title="Residents" description="Everyone who can draw pocket money. Open a resident to change their limit, payment details or access." actions={<AddResidentDialog />} />
       <ResidentsList />
     </>
   );

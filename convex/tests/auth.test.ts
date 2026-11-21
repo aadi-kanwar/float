@@ -40,7 +40,6 @@ test("a new resident must change the temporary password before anything else", a
   const { residentId } = await admin.as.action(api.residents.create, {
     name: "Ravi Kumar",
     phone,
-    depositRupees: 5000,
     temporaryPassword: PASSWORD,
   });
   expect((await signIn(t, phone, PASSWORD)).tokens?.token).toBeTruthy();

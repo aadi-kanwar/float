@@ -8,7 +8,6 @@ import { useMe } from "@/components/app/session";
 import { PointsCard } from "@/components/points/points-card";
 import {
   CreditMeter,
-  DepositMeter,
   DueProgress,
 } from "@/components/money/resident-charts";
 import { Banner } from "@/components/ui/banner";
@@ -105,7 +104,6 @@ export default function ResidentHome() {
             </p>
           ) : null}
           <PointsCard />
-          <DepositMeter s={s} />
         </>
       )}
     </>

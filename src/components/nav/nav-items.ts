@@ -46,13 +46,13 @@ export const RESIDENT_NAV: NavItem[] = [
   { href: "/me", label: "Home", icon: House },
   { href: "/me/store", label: "Store", icon: Store },
   { href: "/me/points", label: "Points", icon: Sparkles },
-  { href: "/me/statements", label: "Statements", icon: FileText },
+  { href: "/me/activity", label: "Activity", icon: ListOrdered },
 ];
 
 /** Under the resident's "More" tab. */
 export const RESIDENT_MORE: NavItem[] = [
   { href: "/me/redemptions", label: "My redemptions", icon: Gift },
-  { href: "/me/activity", label: "Activity", icon: ListOrdered },
+  { href: "/me/statements", label: "Statements", icon: FileText },
   { href: "/me/account", label: "Account", icon: UserRound },
 ];
 
