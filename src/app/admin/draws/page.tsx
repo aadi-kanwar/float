@@ -1,12 +1,13 @@
 "use client";
 
 import { useMutation } from "convex/react";
-import { Check, Send, X } from "lucide-react";
+import { Check, X } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
 import { api } from "@convex/_generated/api";
 import { usePropertyScope } from "@/components/app/property-scope";
 import type { Id } from "@convex/_generated/dataModel";
+import { MarkSentDialog, PAYMENT_MODE_LABEL } from "@/components/admin/send-money";
 import { DrawBadge } from "@/components/money/bits";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -65,7 +66,8 @@ export default function DrawsPage() {
                     </span>
                     <span className="text-sm text-foreground-secondary">
                       <span className="tabular font-semibold text-foreground">{formatPaise(d.amountPaise)}</span> + fee {formatPaise(d.feePaise)} · {formatWhen(d.requestedAt)}
-                      {d.upiRef ? ` · UPI ref ${d.upiRef}` : ""}
+                      {d.paymentMode ? ` · ${PAYMENT_MODE_LABEL[d.paymentMode]}` : ""}
+                      {d.upiRef ? ` · UTR ${d.upiRef}` : ""}
                     </span>
                     <span>
                       <DrawBadge status={d.status} />
@@ -94,7 +96,7 @@ export default function DrawsPage() {
                           Approve
                         </Button>
                       ) : null}
-                      <SendDialog id={d.drawRequestId} name={d.residentName} amountPaise={d.amountPaise} />
+                      <MarkSentDialog drawRequestId={d.drawRequestId} name={d.residentName} amountPaise={d.amountPaise} upiId={d.upiId} upiQrUrl={d.upiQrUrl} />
                       <RejectDialog id={d.drawRequestId} name={d.residentName} />
                     </div>
                   ) : null}
@@ -105,51 +107,6 @@ export default function DrawsPage() {
         )}
       </div>
     </>
-  );
-}
-
-function SendDialog({ id, name, amountPaise }: { id: Id<"drawRequests">; name: string; amountPaise: number }) {
-  const mark = useMutation(api.draws.markDisbursed);
-  const [open, setOpen] = useState(false);
-  const [ref, setRef] = useState("");
-  const [busy, setBusy] = useState(false);
-  return (
-    <Dialog open={open} onOpenChange={(o) => { setOpen(o); if (o) setRef(""); }}>
-      <DialogTrigger asChild>
-        <Button>
-          <Icon icon={Send} />
-          Mark sent
-        </Button>
-      </DialogTrigger>
-      <DialogContent title={`Sent ${formatPaise(amountPaise)} to ${name}?`} description="Send it by UPI first. Marking it sent puts it (and its fee) on their statement.">
-        <form
-          className="flex flex-col gap-4"
-          onSubmit={async (e) => {
-            e.preventDefault();
-            setBusy(true);
-            try {
-              await mark({ drawRequestId: id, upiRef: ref || undefined });
-              toast.success("Marked as sent.");
-              setOpen(false);
-            } catch (error) {
-              toast.error(friendlyError(error));
-            } finally {
-              setBusy(false);
-            }
-          }}
-        >
-          <Field id="send-ref" label="UPI reference (optional)">
-            {(p) => <Input {...p} value={ref} onChange={(e) => setRef(e.target.value)} maxLength={60} />}
-          </Field>
-          <DialogFooter>
-            <DialogClose asChild>
-              <Button variant="ghost" type="button">Cancel</Button>
-            </DialogClose>
-            <Button type="submit" loading={busy}>Mark sent</Button>
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
   );
 }
 

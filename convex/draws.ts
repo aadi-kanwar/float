@@ -21,6 +21,7 @@ import { drawFeePaise, formatPaise, rupeesToPaise } from "./lib/money";
 import { inScope, residentsInScope } from "./lib/org";
 import { currentSettings } from "./lib/settings";
 import { currentTerms } from "./lib/terms";
+import { vPaymentMode } from "./lib/validators";
 
 const cleanText = (text: string | undefined, max: number) => {
   const t = (text ?? "").trim();
@@ -54,6 +55,8 @@ export const preview = residentQuery({
       termsVersion: terms.version,
       termsAccepted: accepted !== null,
       paused: resident.paused,
+      /** Whether the office knows where to send the money. */
+      payoutSet: Boolean(resident.upiId || resident.upiQrId),
       frozen: settings.freezeWhenOverdue && summary.overdue,
     };
   },
@@ -160,6 +163,7 @@ function publicDraw(d: Doc<"drawRequests">) {
     decidedAt: d.decidedAt ?? null,
     disbursedAt: d.disbursedAt ?? null,
     upiRef: d.upiRef ?? null,
+    paymentMode: d.paymentMode ?? null,
     note: d.note ?? null,
   };
 }
@@ -188,7 +192,15 @@ export const queue = adminQuery({
     const out = [];
     for (const d of rows.filter((x) => inScope(scope, x.residentId))) {
       const r = await ctx.db.get(d.residentId);
-      out.push({ ...publicDraw(d), residentId: d.residentId, residentName: r?.name ?? "Unknown", roomNumber: r?.roomNumber ?? null, phone: r?.phone ?? "" });
+      out.push({
+        ...publicDraw(d),
+        residentId: d.residentId,
+        residentName: r?.name ?? "Unknown",
+        roomNumber: r?.roomNumber ?? null,
+        phone: r?.phone ?? "",
+        upiId: r?.upiId ?? null,
+        upiQrUrl: r?.upiQrId ? await ctx.storage.getUrl(r.upiQrId) : null,
+      });
     }
     return out;
   },
@@ -252,7 +264,7 @@ export const reject = adminMutation({
 
 /** The admin sent the money by UPI: it goes on the ledger now (principal and fee as separate rows). */
 export const markDisbursed = adminMutation({
-  args: { drawRequestId: v.id("drawRequests"), upiRef: v.optional(v.string()) },
+  args: { drawRequestId: v.id("drawRequests"), paymentMode: v.optional(vPaymentMode), upiRef: v.optional(v.string()) },
   handler: async (ctx, args) => {
     const d = await loadDraw(ctx, args.drawRequestId);
     if (d.status !== "requested" && d.status !== "approved") throw appError("CONFLICT", "This draw can't be marked as sent.");
@@ -265,6 +277,7 @@ export const markDisbursed = adminMutation({
       decidedBy: d.decidedBy ?? ctx.admin.userId,
       disbursedAt: now,
       disbursedBy: ctx.admin.userId,
+      paymentMode: args.paymentMode ?? "upi",
       upiRef,
     });
     const base = { residentId: d.residentId, cycleMonth, drawRequestId: d._id, effectiveAt: now, createdAt: now, createdBy: ctx.admin.userId };
@@ -276,12 +289,12 @@ export const markDisbursed = adminMutation({
       entityType: "drawRequests",
       entityId: d._id,
       residentId: d.residentId,
-      metadata: { before: { status: d.status }, after: { status: "disbursed", upiRef: upiRef ?? null }, amountPaise: d.amountPaise, feePaise: d.feePaise, cycleMonth },
+      metadata: { before: { status: d.status }, after: { status: "disbursed", paymentMode: args.paymentMode ?? "upi", utr: upiRef ?? null }, amountPaise: d.amountPaise, feePaise: d.feePaise, cycleMonth },
     });
     await notify(ctx, d.residentId, {
       kind: "draw_disbursed",
       title: "Money sent",
-      body: `${formatPaise(d.amountPaise)} has been sent to you${upiRef ? ` (UPI ref ${upiRef})` : ""}.`,
+      body: `${formatPaise(d.amountPaise)} has been sent to you${args.paymentMode === "cash" ? " in cash" : ""}${upiRef ? ` (UTR ${upiRef})` : ""}.`,
       href: "/me/activity",
     });
     return null;

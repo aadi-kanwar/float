@@ -4,6 +4,7 @@ import { useMutation } from "convex/react";
 import { useState } from "react";
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
+import { PAYMENT_MODE_LABEL } from "@/components/admin/send-money";
 import { ClaimBadge, DrawBadge, LedgerAmount } from "@/components/money/bits";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -64,7 +65,8 @@ function Requests() {
               <div className="flex flex-wrap items-center gap-2 text-sm text-foreground-secondary">
                 <DrawBadge status={item.d.status} />
                 <span>Fee {formatPaise(item.d.feePaise)}</span>
-                {item.d.upiRef ? <span>· UPI ref {item.d.upiRef}</span> : null}
+                {item.d.paymentMode ? <span>· {PAYMENT_MODE_LABEL[item.d.paymentMode]}</span> : null}
+                {item.d.upiRef ? <span>· UTR {item.d.upiRef}</span> : null}
               </div>
               {item.d.note ? <p className="text-sm">Note: {item.d.note}</p> : null}
               {item.d.status === "requested" ? (
@@ -97,7 +99,7 @@ function Requests() {
               </div>
               <div className="flex flex-wrap items-center gap-2 text-sm text-foreground-secondary">
                 <ClaimBadge status={item.c.status} />
-                {item.c.upiRef ? <span>UPI ref {item.c.upiRef}</span> : null}
+                {item.c.upiRef ? <span>UTR {item.c.upiRef}</span> : null}
               </div>
               {item.c.note ? <p className="text-sm">Note: {item.c.note}</p> : null}
             </li>

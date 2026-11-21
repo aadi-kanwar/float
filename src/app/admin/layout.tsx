@@ -20,6 +20,7 @@ import {
 } from "@/components/app/session";
 import { ADMIN_NAV as BASE_NAV, namedNav } from "@/components/nav/nav-items";
 import { AppSidebar, BottomNav } from "@/components/nav/app-nav";
+import { BackButton } from "@/components/nav/back-button";
 import { LoadingState } from "@/components/ui/skeleton";
 import { NotAuthorizedState } from "@/components/ui/states";
 
@@ -106,6 +107,7 @@ export default function AdminLayout({
       >
         <main className="px-4 pt-6 pb-10 md:px-8 print:p-0">
           <div className="mx-auto flex max-w-5xl flex-col gap-6">
+            <BackButton tabs={ADMIN_NAV} home="/admin" />
             {children}
           </div>
         </main>

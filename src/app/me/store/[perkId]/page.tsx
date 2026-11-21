@@ -1,7 +1,6 @@
 "use client";
 
 import { useMutation } from "convex/react";
-import { ArrowLeft } from "lucide-react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useState } from "react";
@@ -12,7 +11,6 @@ import { Button } from "@/components/ui/button";
 import { Card, CardBody } from "@/components/ui/card";
 import { Dialog, DialogClose, DialogContent, DialogFooter } from "@/components/ui/dialog";
 import { Field } from "@/components/ui/field";
-import { Icon } from "@/components/ui/icon";
 import { Input } from "@/components/ui/input";
 import { NativeSelect } from "@/components/ui/native-select";
 import { LoadingState } from "@/components/ui/skeleton";
@@ -41,10 +39,6 @@ export default function PerkPage() {
   const after = s.balance - p.costPoints;
   return (
     <>
-      <Link href="/me/store" className="inline-flex items-center gap-1 self-start text-sm text-foreground-secondary hover:text-foreground">
-        <Icon icon={ArrowLeft} className="size-4" />
-        Perk Store
-      </Link>
       <Card className="overflow-hidden">
         <PerkArt perk={p} className="aspect-[16/9]" />
         <CardBody className="flex flex-col gap-3">

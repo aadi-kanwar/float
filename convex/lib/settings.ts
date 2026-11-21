@@ -5,7 +5,6 @@ import type { SettingsValues } from "./validators";
 /** The defaults, used until an admin saves Settings for the first time. */
 export const DEFAULT_SETTINGS: SettingsValues = {
   defaultLimitPaise: 500_000, // ₹5,000
-  limitCappedByDeposit: true,
   minDrawPaise: 10_000, // ₹100
   feeBasisPoints: 500, // 5%
   dueDayOfMonth: 5,
@@ -15,6 +14,7 @@ export const DEFAULT_SETTINGS: SettingsValues = {
   freezeWhenOverdue: true,
   dueSoonDays: 2,
   pointsName: "Points",
+  pointValueBasisPoints: 100, // 1 point = 1% of ₹1
   pointsExpiryMonths: 12,
   limitGrowthEnabled: false,
 };
@@ -51,6 +51,8 @@ export function settingsProblem(s: SettingsValues): string | null {
     return "The reminder must be 0 to 10 days before.";
   const name = s.pointsName.trim();
   if (name.length < 1 || name.length > 24) return "The points name must be 1 to 24 characters.";
+  const value = s.pointValueBasisPoints ?? 100;
+  if (!Number.isInteger(value) || value < 0 || value > 10_000) return "A point's value must be 0% to 100% of ₹1 (up to 2 decimals).";
   if (!Number.isInteger(s.pointsExpiryMonths) || s.pointsExpiryMonths < 0 || s.pointsExpiryMonths > 120)
     return "Points expiry must be 0 (never) to 120 months.";
   return null;

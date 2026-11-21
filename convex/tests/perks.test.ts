@@ -135,3 +135,13 @@ test("CSV export: a date range, safe cells, audit-logged", async () => {
 });
 
 export type { T };
+
+test("the admin can give a code or link with a status change; the resident sees it", async () => {
+  const { admin, asha, perkId } = await setup();
+  const id = await asha.as.mutation(api.redemptions.redeem, { perkId, answers });
+  await admin.as.mutation(api.redemptions.setStatus, { redemptionId: id, status: "fulfilled", note: "Enjoy", info: "https://example.com/voucher/AB12" });
+  const [mine] = await asha.as.query(api.redemptions.mine, {});
+  expect(mine).toMatchObject({ status: "fulfilled", redeemInfo: "https://example.com/voucher/AB12" });
+  const other = await asha.as.mutation(api.redemptions.redeem, { perkId: await admin.as.mutation(api.perks.create, { ...PERK, title: "Chai", fields: [] }), answers: [] });
+  expect(await errorCode(admin.as.mutation(api.redemptions.setStatus, { redemptionId: other, status: "rejected", info: "CODE" }))).toBe("INVALID_INPUT");
+});

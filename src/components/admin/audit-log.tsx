@@ -19,11 +19,11 @@ export const ACTION_LABEL: Record<string, string> = {
   "property.renamed": "PG renamed",
   "resident.created": "Resident added",
   "resident.updated": "Resident details changed",
-  "resident.deposit_changed": "Deposit changed",
   "resident.limit_changed": "Limit changed",
   "resident.paused": "Resident paused",
   "resident.resumed": "Resident resumed",
   "resident.password_reset": "Password reset",
+  "resident.payout_changed": "Payment details changed",
   "settings.changed": "Settings changed",
   "terms.changed": "Terms changed",
   "terms.accepted": "Terms accepted",
@@ -39,8 +39,7 @@ export const ACTION_LABEL: Record<string, string> = {
   "repayment.recorded": "Payment recorded",
   "ledger.waived": "Fee waived",
   "ledger.reversed": "Ledger row reversed",
-  "deposit.settled": "Settled from deposit",
-  "points.earned": "Rewards earned",
+  "points.earned": "Rewards earned for a repayment",
   "points.clawed_back": "Rewards taken back",
   "points.granted": "Rewards given",
   "points.deducted": "Rewards taken",
@@ -86,9 +85,9 @@ export function auditSummary(action: string, meta: Record<string, unknown> | nul
   if (!meta) return "";
   const before = meta.before;
   const after = meta.after;
-  // Single values (deposit, limit, paused): the key is in the action.
+  // Single values (limit, paused): the key is in the action.
   if ((typeof before !== "object" || before === null) && (typeof after !== "object" || after === null) && ("before" in meta || "after" in meta)) {
-    const key = action.includes("deposit") || action.includes("limit") ? "paise" : "";
+    const key = action.includes("limit") ? "paise" : "";
     return `${show(key, before)} → ${show(key, after)}`;
   }
   const b = (before ?? {}) as Record<string, unknown>;

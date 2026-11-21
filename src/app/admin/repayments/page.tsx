@@ -67,7 +67,7 @@ export default function RepaymentsPage() {
                     </span>
                     <span className="text-sm text-foreground-secondary">
                       <span className="tabular font-semibold text-foreground">{formatPaise(c.amountPaise)}</span> · paid {formatWhen(c.submittedAt)}
-                      {c.upiRef ? ` · UPI ref ${c.upiRef}` : ""}
+                      {c.upiRef ? ` · UTR ${c.upiRef}` : ""}
                     </span>
                     <span>
                       <ClaimBadge status={c.status} />

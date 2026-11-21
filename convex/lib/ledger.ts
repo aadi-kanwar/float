@@ -5,7 +5,7 @@
  *
  * Rows:
  *   draw, fee, lateFee        charges, each belonging to a month ("cycle")
- *   repayment, depositAdjustment
+ *   repayment               credit:
  *                             credits: paid off oldest month first, and in
  *                             each month late fees -> fees -> principal
  *   waiver                    removes part of one month's fee or late fee

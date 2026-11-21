@@ -7,8 +7,8 @@
  * - an admin here, with a temporary password the resident must change at
  *   first sign-in (Float's own login, kept as a backup until HUB_ONLY=true).
  *
- * Deposit, credit limit and pause are Float's own and only an admin sets
- * them. Every change is audit-logged with old and new values; overrides
+ * Credit limit and pause are Float's own and only an admin sets them.
+ * Where their money is sent (UPI ID / QR) is set by the resident or an admin. Every change is audit-logged with old and new values; overrides
  * need a reason. Passwords are never logged.
  */
 import { invalidateSessions, modifyAccountCredentials } from "@convex-dev/auth/server";
@@ -26,6 +26,8 @@ import {
   adminQuery,
   internalMutation,
   internalQuery,
+  residentMutation,
+  residentQuery,
 } from "./lib/functions";
 import { displayNameSchema, normalizePhone, passwordProblem } from "./lib/inputRules";
 import { rupeesToPaise } from "./lib/money";
@@ -33,7 +35,7 @@ import { currentSettings } from "./lib/settings";
 
 type Db = Pick<QueryCtx, "db">;
 
-const MAX_DEPOSIT_PAISE = 10_000_000; // ₹1,00,000
+const MAX_LIMIT_PAISE = 10_000_000; // ₹1,00,000
 
 export async function loadResident(ctx: Db, residentId: Id<"residents">): Promise<Doc<"residents">> {
   const resident = await ctx.db.get(residentId);
@@ -45,13 +47,6 @@ function cleanRoom(room: string | undefined): string | undefined {
   const text = (room ?? "").trim();
   if (text.length > 20) throw appError("INVALID_INPUT", "Use at most 20 characters for the room.");
   return text.length > 0 ? text : undefined;
-}
-
-function depositPaise(rupees: number): number {
-  const paise = rupeesToPaise(rupees);
-  if (paise < 0 || paise > MAX_DEPOSIT_PAISE)
-    throw appError("INVALID_INPUT", "The deposit must be between ₹0 and ₹1,00,000.");
-  return paise;
 }
 
 async function checkProperty(ctx: Db, propertyId: Id<"properties"> | undefined) {
@@ -119,7 +114,6 @@ export const list = adminQuery({
         phone: r.phone,
         roomNumber: r.roomNumber ?? null,
         propertyName: r.propertyId ? (properties.get(r.propertyId) ?? null) : null,
-        depositPaise: r.depositPaise,
         limitPaise: r.limitPaise ?? settings.defaultLimitPaise,
         ownLimit: r.limitPaise !== undefined,
         paused: r.paused,
@@ -158,7 +152,6 @@ export const get = adminQuery({
       roomNumber: r.roomNumber ?? null,
       propertyId: r.propertyId ?? null,
       propertyName: property?.name ?? null,
-      depositPaise: r.depositPaise,
       limitPaise: r.limitPaise ?? settings.defaultLimitPaise,
       ownLimit: r.limitPaise !== undefined,
       paused: r.paused,
@@ -167,6 +160,9 @@ export const get = adminQuery({
       disabled: user?.disabled === true,
       mustChangePassword: user?.mustChangePassword === true,
       hasPassword,
+      upiId: r.upiId ?? null,
+      upiQrId: r.upiQrId ?? null,
+      upiQrUrl: r.upiQrId ? await ctx.storage.getUrl(r.upiQrId) : null,
       createdAt: r.createdAt,
       history: history.map((h) => ({
         id: h._id,
@@ -186,7 +182,6 @@ export const create = adminAction({
     phone: v.string(),
     roomNumber: v.optional(v.string()),
     propertyId: v.optional(v.id("properties")),
-    depositRupees: v.number(),
     temporaryPassword: v.string(),
   },
   handler: async (ctx, args): Promise<{ residentId: Id<"residents"> }> => {
@@ -201,7 +196,6 @@ export const create = adminAction({
       phone,
       roomNumber: cleanRoom(args.roomNumber),
       propertyId: args.propertyId,
-      depositPaise: depositPaise(args.depositRupees),
     };
     await ctx.runQuery(internal.residents.checkNewResident, { phone, propertyId: args.propertyId });
     let userId: Id<"users">;
@@ -245,7 +239,6 @@ export const setUpResident = internalMutation({
     phone: v.string(),
     roomNumber: v.optional(v.string()),
     propertyId: v.optional(v.id("properties")),
-    depositPaise: v.number(),
   },
   returns: v.id("residents"),
   handler: async (ctx, { userId, actorUserId, ...details }) => {
@@ -316,28 +309,6 @@ export const update = adminMutation({
   },
 });
 
-/** The recorded security deposit (e.g. it was entered wrongly, or topped up). */
-export const setDeposit = adminMutation({
-  args: { residentId: v.id("residents"), depositRupees: v.number(), reason: v.string() },
-  handler: async (ctx, args) => {
-    const r = await loadResident(ctx, args.residentId);
-    const reason = requireReason(args.reason);
-    const after = depositPaise(args.depositRupees);
-    if (after === r.depositPaise) return null;
-    await ctx.db.patch(r._id, { depositPaise: after });
-    await writeAudit(ctx, {
-      actorUserId: ctx.admin.userId,
-      action: "resident.deposit_changed",
-      entityType: "residents",
-      entityId: r._id,
-      residentId: r._id,
-      reason,
-      metadata: { before: r.depositPaise, after },
-    });
-    return null;
-  },
-});
-
 /** This resident's own credit limit, or back to the default (null). */
 export const setLimit = adminMutation({
   args: { residentId: v.id("residents"), limitRupees: v.union(v.number(), v.null()), reason: v.string() },
@@ -347,7 +318,7 @@ export const setLimit = adminMutation({
     let after: number | undefined;
     if (args.limitRupees !== null) {
       after = rupeesToPaise(args.limitRupees);
-      if (after < 0 || after > MAX_DEPOSIT_PAISE)
+      if (after < 0 || after > MAX_LIMIT_PAISE)
         throw appError("INVALID_INPUT", "The limit must be between ₹0 and ₹1,00,000.");
     }
     if (after === r.limitPaise) return null;
@@ -439,4 +410,67 @@ export const recordReset = internalMutation({
     });
     return null;
   },
+});
+
+// ---- Where to send a resident's money (UPI ID and/or QR photo) ------------
+
+/** A UPI ID like name@okhdfcbank, or INVALID_INPUT. Empty = none. */
+export function cleanUpiId(raw: string | null | undefined): string | undefined {
+  const text = (raw ?? "").trim();
+  if (text === "") return undefined;
+  if (!/^[a-zA-Z0-9._-]{2,256}@[a-zA-Z][a-zA-Z0-9.-]{1,63}$/.test(text))
+    throw appError("INVALID_INPUT", "That doesn't look like a UPI ID (for example name@okhdfcbank).");
+  return text;
+}
+
+async function savePayout(
+  ctx: Pick<MutationCtx, "db" | "storage">,
+  r: Doc<"residents">,
+  upiId: string | undefined,
+  upiQrId: Id<"_storage"> | undefined,
+  actorUserId: Id<"users">,
+) {
+  const before = { upiId: r.upiId ?? null, qr: r.upiQrId ? "photo" : null };
+  const after = { upiId: upiId ?? null, qr: upiQrId ? "photo" : null };
+  if (r.upiId === upiId && r.upiQrId === upiQrId) return;
+  if (r.upiQrId && r.upiQrId !== upiQrId) await ctx.storage.delete(r.upiQrId);
+  await ctx.db.patch(r._id, { upiId, upiQrId });
+  await writeAudit(ctx, { actorUserId, action: "resident.payout_changed", entityType: "residents", entityId: r._id, residentId: r._id, metadata: { before, after } });
+}
+
+/** Admin: set where a resident's money goes. */
+export const setPayout = adminMutation({
+  args: { residentId: v.id("residents"), upiId: v.union(v.string(), v.null()), upiQrId: v.union(v.id("_storage"), v.null()) },
+  handler: async (ctx, args) => {
+    const r = await loadResident(ctx, args.residentId);
+    await savePayout(ctx, r, cleanUpiId(args.upiId), args.upiQrId ?? undefined, ctx.admin.userId);
+    return null;
+  },
+});
+
+export const qrUploadUrl = adminMutation({
+  args: {},
+  handler: async (ctx) => await ctx.storage.generateUploadUrl(),
+});
+
+/** Resident: their own UPI ID and QR photo. */
+export const myPayout = residentQuery({
+  args: {},
+  handler: async (ctx) => {
+    const r = ctx.resident.resident;
+    return { upiId: r.upiId ?? null, upiQrId: r.upiQrId ?? null, upiQrUrl: r.upiQrId ? await ctx.storage.getUrl(r.upiQrId) : null };
+  },
+});
+
+export const setMyPayout = residentMutation({
+  args: { upiId: v.union(v.string(), v.null()), upiQrId: v.union(v.id("_storage"), v.null()) },
+  handler: async (ctx, args) => {
+    await savePayout(ctx, ctx.resident.resident, cleanUpiId(args.upiId), args.upiQrId ?? undefined, ctx.resident.userId);
+    return null;
+  },
+});
+
+export const myQrUploadUrl = residentMutation({
+  args: {},
+  handler: async (ctx) => await ctx.storage.generateUploadUrl(),
 });

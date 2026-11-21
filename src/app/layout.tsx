@@ -29,7 +29,7 @@ const displaySerif = localFont({
 export const metadata: Metadata = {
   title: { default: "Float", template: "%s · Float" },
   description:
-    "Livoza Float: pocket money against your deposit, points and perks.",
+    "Livoza Float: pocket money, points and perks.",
 };
 
 export const viewport: Viewport = {

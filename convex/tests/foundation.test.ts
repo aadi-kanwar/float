@@ -13,11 +13,11 @@ test("an admin creates a resident who must change the temporary password", async
     name: "Asha Rao",
     phone: "98765 43210",
     roomNumber: "204",
-    depositRupees: 8000,
     temporaryPassword: PASSWORD,
   });
   const r = await admin.as.query(api.residents.get, { residentId });
-  expect(r).toMatchObject({ phone: "+919876543210", depositPaise: 800_000, limitPaise: 500_000, mustChangePassword: true });
+  expect(r).toMatchObject({ phone: "+919876543210", limitPaise: 500_000, mustChangePassword: true });
+  expect(r).not.toHaveProperty("depositPaise");
   const userId = await t.run(async (ctx) => (await ctx.db.get(residentId))!.userId);
   const as = await signedInAs(t, userId);
   expect(await errorCode(as.query(api.settings.get, {}))).toBe("FORBIDDEN");
@@ -27,7 +27,6 @@ test("an admin creates a resident who must change the temporary password", async
       admin.as.action(api.residents.create, {
         name: "Someone Else",
         phone: "+919876543210",
-        depositRupees: 0,
         temporaryPassword: PASSWORD,
       }),
     ),

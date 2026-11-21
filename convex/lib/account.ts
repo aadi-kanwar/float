@@ -1,6 +1,6 @@
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
-import { bucketOutstanding, replay, monthOutstanding, voidIds, type Account, type LedgerRow, type MonthState } from "./ledger";
+import { bucketOutstanding, replay, monthOutstanding, type Account, type LedgerRow, type MonthState } from "./ledger";
 import type { SettingsValues } from "./validators";
 import { istMonth, shiftMonth } from "./time";
 
@@ -79,7 +79,7 @@ export type Summary = Awaited<ReturnType<typeof accountSummary>>;
 
 /**
  * Everything about a resident's money, worked out from the ledgers:
- * owed, deposit left, limit, room to draw, overdue state and statements.
+ * owed, limit, room to draw, overdue state and statements.
  */
 export async function accountSummary(
   ctx: Db,
@@ -89,11 +89,6 @@ export async function accountSummary(
 ) {
   const entries = await ledgerRows(ctx, resident._id);
   const account: Account = replay(toRows(entries));
-  const cancelled = voidIds(toRows(entries));
-  const depositUsed = entries
-    .filter((e) => e.type === "depositAdjustment" && !cancelled.has(e._id))
-    .reduce((sum, e) => sum + e.amountPaise, 0);
-  const depositBalancePaise = resident.depositPaise - depositUsed;
 
   const pending = await ctx.db
     .query("drawRequests")
@@ -104,7 +99,7 @@ export async function accountSummary(
     .reduce((sum, d) => sum + d.amountPaise, 0);
 
   const ownLimit = resident.limitPaise ?? settings.defaultLimitPaise;
-  const limitPaise = settings.limitCappedByDeposit ? Math.max(0, Math.min(ownLimit, depositBalancePaise)) : ownLimit;
+  const limitPaise = ownLimit;
   // Only money drawn counts against the limit: fees and late fees never do
   // (the owner's rule: with a ₹5,000 limit a resident can draw the full ₹5,000).
   const principalOwedPaise = account.months.reduce((sum, m) => sum + bucketOutstanding(m, "principal"), 0);
@@ -133,7 +128,6 @@ export async function accountSummary(
     entries,
     outstandingPaise: account.outstandingPaise,
     creditBalancePaise: account.creditBalancePaise,
-    depositBalancePaise,
     limitPaise,
     /** Draws asked or approved but not sent yet (amount only, no fee). */
     pendingDrawsPaise,

@@ -86,7 +86,6 @@ export function ResidentsList() {
                   </span>
                   <span className="hidden flex-col items-end text-sm sm:flex">
                     <span className="tabular">Limit {formatPaise(r.limitPaise)}</span>
-                    <span className="tabular text-foreground-secondary">Deposit {formatPaise(r.depositPaise)}</span>
                   </span>
                   <ChevronRight className="size-4 shrink-0 text-foreground-muted" aria-hidden />
                 </Link>
@@ -109,7 +108,6 @@ export function AddResidentDialog() {
   const [phone, setPhone] = useState("");
   const [room, setRoom] = useState("");
   const [propertyId, setPropertyId] = useState("");
-  const [deposit, setDeposit] = useState("");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const [created, setCreated] = useState<string | null>(null);
@@ -123,7 +121,6 @@ export function AddResidentDialog() {
           setPhone("");
           setRoom("");
           setPropertyId(current?.propertyId ?? (pgs?.length === 1 ? pgs[0].propertyId : ""));
-          setDeposit("");
           setPassword(suggestPassword());
           setCreated(null);
         }
@@ -150,11 +147,6 @@ export function AddResidentDialog() {
             className="flex flex-col gap-4"
             onSubmit={async (e) => {
               e.preventDefault();
-              const rupees = deposit.trim().replace(/,/g, "");
-              if (!/^\d+$/.test(rupees)) {
-                toast.error("Enter the deposit in whole rupees.");
-                return;
-              }
               setBusy(true);
               try {
                 await create({
@@ -162,7 +154,6 @@ export function AddResidentDialog() {
                   phone,
                   roomNumber: room || undefined,
                   propertyId: (propertyId || undefined) as Id<"properties"> | undefined,
-                  depositRupees: Number(rupees),
                   temporaryPassword: password,
                 });
                 setCreated(password);
@@ -181,14 +172,9 @@ export function AddResidentDialog() {
                 <Input {...p} type="tel" inputMode="tel" placeholder="98765 43210" value={phone} onChange={(e) => setPhone(e.target.value)} required />
               )}
             </Field>
-            <div className="grid grid-cols-2 gap-3">
-              <Field id="r-room" label="Room / bed">
+            <Field id="r-room" label="Room / bed">
                 {(p) => <Input {...p} value={room} onChange={(e) => setRoom(e.target.value)} maxLength={20} />}
-              </Field>
-              <Field id="r-deposit" label="Deposit (₹)">
-                {(p) => <Input {...p} inputMode="numeric" value={deposit} onChange={(e) => setDeposit(e.target.value)} required />}
-              </Field>
-            </div>
+            </Field>
             {pgs && pgs.length > 0 ? <PgSelect pgs={pgs} value={propertyId} onChange={setPropertyId} /> : null}
             <Field id="r-password" label="Temporary password" hint="At least 8 characters. They must change it when they first sign in.">
               {(p) => <Input {...p} value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="off" required />}

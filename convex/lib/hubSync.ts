@@ -21,9 +21,7 @@ import type { HubPerson, HubPropertyRef } from "./ssoTicket";
  *   changed and the sign-in is refused; the admin sorts it out by hand.
  * - Switched off in the hub (or no Float role any more): the account is
  *   switched off and signed out. Its money history and anything owed stay.
- * - Deposit, limit and pause are Float's own; the hub never sets them.
- *   A resident the hub creates starts with a ₹0 deposit until an admin
- *   records it.
+ * - Limit and pause are Float's own; the hub never sets them.
  */
 
 type Db = Pick<MutationCtx, "db">;
@@ -126,7 +124,7 @@ export async function applyHubPerson(ctx: Db, person: HubPerson, options: { acti
       .unique();
     const details = { name: person.name, phone: person.phone, roomNumber: person.roomNumber ?? undefined, propertyId: property?._id };
     if (existing === null) {
-      residentId = await ctx.db.insert("residents", { userId, ...details, depositPaise: 0, paused: false, status: "active", createdAt: Date.now() });
+      residentId = await ctx.db.insert("residents", { userId, ...details, paused: false, status: "active", createdAt: Date.now() });
       await writeAudit(ctx, { actorUserId: undefined, action: "resident.created", entityType: "residents", entityId: residentId, residentId, metadata: { after: { ...details, fromHub: true } } });
     } else {
       residentId = existing._id;

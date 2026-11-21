@@ -122,12 +122,14 @@ async function changeStatus(
   to: RedemptionStatus,
   who: { by: "resident" | "admin"; userId: Id<"users"> },
   note: string | undefined,
+  info?: string,
 ) {
   const now = Date.now();
   const refundEntryId = ENDED.includes(to) ? await undo(ctx, r, who.userId) : undefined;
   await ctx.db.patch(r._id, {
     status: to,
-    history: [...r.history, { status: to, at: now, by: who.by, byUserId: who.userId, note }],
+    history: [...r.history, { status: to, at: now, by: who.by, byUserId: who.userId, note, info }],
+    ...(info ? { redeemInfo: info } : {}),
     updatedAt: now,
     ...(refundEntryId ? { refundEntryId } : {}),
   });
@@ -138,13 +140,13 @@ async function changeStatus(
     entityId: r._id,
     residentId: r.residentId,
     reason: note,
-    metadata: { perk: r.perkTitle, before: r.status, after: to, pointsRefunded: refundEntryId ? r.costPoints : 0 },
+    metadata: { perk: r.perkTitle, before: r.status, after: to, pointsRefunded: refundEntryId ? r.costPoints : 0, infoGiven: info ? true : false },
   });
   const settings = await currentSettings(ctx);
   await notify(ctx, r.residentId, {
     kind: "redemption_status",
     title: `${r.perkTitle}: ${STATUS_LABEL[to]}`,
-    body: `${note ? `${note} ` : ""}${refundEntryId ? `Your ${r.costPoints} ${settings.pointsName} are back.` : ""}`.trim() || `Your redemption is now ${STATUS_LABEL[to].toLowerCase()}.`,
+    body: `${info ? "Your code / details are ready in My redemptions. " : ""}${note ? `${note} ` : ""}${refundEntryId ? `Your ${r.costPoints} ${settings.pointsName} are back.` : ""}`.trim() || `Your redemption is now ${STATUS_LABEL[to].toLowerCase()}.`,
     href: "/me/redemptions",
   });
 }
@@ -163,7 +165,7 @@ export const cancel = residentMutation({
 
 /** The admin moves a redemption to any status (with a note). Rejected and Cancelled are final. */
 export const setStatus = adminMutation({
-  args: { redemptionId: v.id("redemptions"), status: vRedemptionStatus, note: v.optional(v.string()) },
+  args: { redemptionId: v.id("redemptions"), status: vRedemptionStatus, note: v.optional(v.string()), info: v.optional(v.string()) },
   handler: async (ctx, args) => {
     const r = await ctx.db.get(args.redemptionId);
     if (r === null) throw appError("NOT_FOUND");
@@ -171,7 +173,10 @@ export const setStatus = adminMutation({
     if (r.status === args.status) throw appError("CONFLICT", "It's already at that step.");
     const note = args.note?.trim() || undefined;
     if (note && note.length > 300) throw appError("INVALID_INPUT", "Use at most 300 characters.");
-    await changeStatus(ctx, r, args.status, { by: "admin", userId: ctx.admin.userId }, note);
+    const info = args.info?.trim() || undefined;
+    if (info && info.length > 1000) throw appError("INVALID_INPUT", "Use at most 1,000 characters for the code or link.");
+    if (info && ENDED.includes(args.status)) throw appError("INVALID_INPUT", "A code or link can't go with a rejected or cancelled redemption.");
+    await changeStatus(ctx, r, args.status, { by: "admin", userId: ctx.admin.userId }, note, info);
     return null;
   },
 });
@@ -185,6 +190,7 @@ function publicRedemption(r: Doc<"redemptions">) {
     answers: r.answers,
     status: r.status,
     history: r.history.map((h) => ({ status: h.status, at: h.at, by: h.by, note: h.note ?? null })),
+    redeemInfo: r.status === "rejected" || r.status === "cancelled" ? null : (r.redeemInfo ?? null),
     createdAt: r.createdAt,
     refunded: r.refundEntryId !== undefined,
   };

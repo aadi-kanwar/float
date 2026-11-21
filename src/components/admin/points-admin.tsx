@@ -1,13 +1,13 @@
 "use client";
 
 import { useMutation, usePaginatedQuery } from "convex/react";
-import { ArrowDown, ArrowUp, Pencil, Plus, Sparkles } from "lucide-react";
+import { Pencil, Plus, Sparkles } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
 import { api } from "@convex/_generated/api";
 import { usePropertyScope } from "@/components/app/property-scope";
 import type { Id } from "@convex/_generated/dataModel";
-import { describeRule, PointsHistory, POINTS_TYPE, StreakDots } from "@/components/points/points-bits";
+import { PointsHistory, POINTS_TYPE, StreakDots } from "@/components/points/points-bits";
 import { useMe } from "@/components/app/session";
 import { Button } from "@/components/ui/button";
 import { Card, CardBody } from "@/components/ui/card";
@@ -25,151 +25,26 @@ import { friendlyError } from "@/lib/errors";
 import { formatPaise, formatWhen } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
-const KIND_LABEL = { base: "Base", early: "Early bonus", streak: "Streak bonus" } as const;
-type Kind = keyof typeof KIND_LABEL;
-
-/** Earn rules: edit, switch off, reorder, add. */
-export function RulesEditor() {
+/** How points work now (the rules are fixed; their value is a setting). */
+export function PointsRules() {
   const me = useMe();
-  const rules = useQuery(api.points.rules, {});
-  const setEnabled = useMutation(api.points.setRuleEnabled);
-  const move = useMutation(api.points.moveRule);
+  const settings = useQuery(api.settings.get, {});
   const name = me?.pointsName ?? "";
-  if (rules === undefined) return <LoadingState rows={4} />;
-  const run = async (p: Promise<unknown>) => {
-    try {
-      await p;
-    } catch (error) {
-      toast.error(friendlyError(error));
-    }
-  };
+  if (settings === undefined) return <LoadingState rows={2} />;
+  const pct = (settings.values.pointValueBasisPoints ?? 100) / 100;
   return (
-    <div className="flex flex-col gap-3">
-      <p className="text-sm text-foreground-secondary">
-        {name} are earned only on the amount drawn and repaid (never fees or late fees), for a statement paid in full by its deadline. Multipliers multiply together; the highest streak reached applies. Changes apply to statements paid from now on.
-      </p>
-      <Card>
-        <ul className="divide-y divide-border">
-          {rules.map((r, i) => (
-            <li key={r.ruleId ?? i} className={cn("flex flex-wrap items-center gap-3 px-4 py-3", !r.enabled && "opacity-60")}>
-              <span className="flex min-w-0 flex-1 flex-col">
-                <span className="font-medium">{KIND_LABEL[r.type]}{r.enabled ? "" : " (off)"}</span>
-                <span className="text-sm text-foreground-secondary">{describeRule(r, name)}</span>
-              </span>
-              <span className="flex items-center gap-1">
-                <Button variant="ghost" size="icon" aria-label="Move up" disabled={i === 0} onClick={() => run(move({ index: i, by: -1 }))}>
-                  <Icon icon={ArrowUp} />
-                </Button>
-                <Button variant="ghost" size="icon" aria-label="Move down" disabled={i === rules.length - 1} onClick={() => run(move({ index: i, by: 1 }))}>
-                  <Icon icon={ArrowDown} />
-                </Button>
-                <RuleDialog rule={r} index={i} />
-                <label className="flex min-h-11 cursor-pointer items-center gap-2 px-2 text-sm">
-                  <input type="checkbox" className="size-5 accent-primary" checked={r.enabled} onChange={(e) => run(setEnabled({ index: i, enabled: e.target.checked }))} />
-                  On
-                </label>
-              </span>
-            </li>
-          ))}
-        </ul>
-      </Card>
-      <RuleDialog />
-    </div>
-  );
-}
-
-type RuleRow = NonNullable<ReturnType<typeof useQuery<typeof api.points.rules>>>[number];
-
-function RuleDialog({ rule, index }: { rule?: RuleRow; index?: number }) {
-  const save = useMutation(api.points.saveRule);
-  const [open, setOpen] = useState(false);
-  const [type, setType] = useState<Kind>("streak");
-  const [per100, setPer100] = useState("");
-  const [pct, setPct] = useState("");
-  const [streak, setStreak] = useState("");
-  const [busy, setBusy] = useState(false);
-  return (
-    <Dialog
-      open={open}
-      onOpenChange={(o) => {
-        setOpen(o);
-        if (o) {
-          setType(rule?.type ?? "streak");
-          setPer100(String(rule?.pointsPer100 ?? ""));
-          setPct(rule?.multiplierPct ? String(rule.multiplierPct / 100) : "");
-          setStreak(String(rule?.streakLength ?? ""));
-        }
-      }}
-    >
-      <DialogTrigger asChild>
-        {rule ? (
-          <Button variant="ghost" size="icon" aria-label="Edit rule">
-            <Icon icon={Pencil} />
-          </Button>
-        ) : (
-          <Button variant="secondary" className="self-start">
-            <Icon icon={Plus} />
-            Add a rule
-          </Button>
-        )}
-      </DialogTrigger>
-      <DialogContent title={rule ? `Edit ${KIND_LABEL[rule.type].toLowerCase()}` : "Add a rule"}>
-        <form
-          className="flex flex-col gap-4"
-          onSubmit={async (e) => {
-            e.preventDefault();
-            setBusy(true);
-            try {
-              await save({
-                index,
-                type,
-                pointsPer100: type === "base" ? Number(per100) : undefined,
-                multiplierPct: type !== "base" ? Math.round(Number(pct) * 100) : undefined,
-                streakLength: type === "streak" ? Number(streak) : undefined,
-              });
-              toast.success("Saved.");
-              setOpen(false);
-            } catch (error) {
-              toast.error(friendlyError(error));
-            } finally {
-              setBusy(false);
-            }
-          }}
-        >
-          {rule ? null : (
-            <Field id="rule-type" label="Kind">
-              {(p) => (
-                <NativeSelect {...p} value={type} onChange={(e) => setType(e.target.value as Kind)}>
-                  <option value="base">Base: points per ₹100 repaid</option>
-                  <option value="early">Early bonus: multiplier</option>
-                  <option value="streak">Streak bonus: multiplier after N in a row</option>
-                </NativeSelect>
-              )}
-            </Field>
-          )}
-          {type === "base" ? (
-            <Field id="rule-per100" label="Points per ₹100">
-              {(p) => <Input {...p} inputMode="numeric" value={per100} onChange={(e) => setPer100(e.target.value)} required />}
-            </Field>
-          ) : (
-            <Field id="rule-pct" label="Multiplier (×)" hint="e.g. 2 or 1.25">
-              {(p) => <Input {...p} inputMode="decimal" value={pct} onChange={(e) => setPct(e.target.value)} required />}
-            </Field>
-          )}
-          {type === "streak" ? (
-            <Field id="rule-streak" label="Statements in a row">
-              {(p) => <Input {...p} inputMode="numeric" value={streak} onChange={(e) => setStreak(e.target.value)} required />}
-            </Field>
-          ) : null}
-          <DialogFooter>
-            <DialogClose asChild>
-              <Button variant="ghost" type="button">Cancel</Button>
-            </DialogClose>
-            <Button type="submit" loading={busy}>Save</Button>
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
+    <Card>
+      <CardBody className="flex flex-col gap-2 text-sm">
+        <p>
+          <strong>Residents get as many {name} as rupees of drawn money they repay</strong> (₹1,000 repaid = 1,000 {name}). Fees and late fees never earn {name}.
+        </p>
+        <p>They arrive as soon as you confirm the payment, any day of the month. If you reverse a payment, its {name} come off again.</p>
+        <p>
+          Their value: <strong>{pct.toLocaleString("en-IN")}%</strong>, so 1,000 {name} = ₹{(pct * 10).toLocaleString("en-IN", { maximumFractionDigits: 2 })}. Change this in{" "}
+          <Link href="/admin/settings" className="underline">Settings → Rewards</Link>.
+        </p>
+      </CardBody>
+    </Card>
   );
 }
 
@@ -400,7 +275,7 @@ export function ResidentPoints({ residentId, residentName }: { residentId: Id<"r
   return (
     <div className="flex flex-col gap-3">
       <dl className="grid grid-cols-2 gap-3">
-        <Stat label={`${p.pointsName} balance`} value={p.balance.toLocaleString("en-IN")} emphasis />
+        <Stat label={`${p.pointsName} balance`} value={p.balance.toLocaleString("en-IN")} hint={`Worth ${formatPaise(p.balanceValuePaise)}`} emphasis />
         <Stat label="On time in a row" value={p.streak} />
       </dl>
       <Card>

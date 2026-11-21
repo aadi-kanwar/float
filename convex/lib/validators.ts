@@ -12,8 +12,8 @@ export const vSettingsValues = v.object({
   // ---- Money ----
   /** Credit limit for a resident without their own limit. */
   defaultLimitPaise: v.number(),
-  /** A resident's limit can't be more than their deposit (after adjustments). */
-  limitCappedByDeposit: v.boolean(),
+  /** No longer used (Float has no deposits). Kept only so older saved settings stay valid. */
+  limitCappedByDeposit: v.optional(v.boolean()),
   minDrawPaise: v.number(),
   /** Fee on each draw in basis points (500 = 5%), rounded to the nearest rupee. */
   feeBasisPoints: v.number(),
@@ -31,6 +31,11 @@ export const vSettingsValues = v.object({
   // ---- Points ----
   /** What the points are called everywhere in the app. */
   pointsName: v.string(),
+  /**
+   * What 1 point is worth, in basis points of ₹1 (100 = 1% of ₹1, so 1,000
+   * points = ₹10). Points are earned 1 per ₹1 of drawn money repaid.
+   */
+  pointValueBasisPoints: v.optional(v.number()),
   /** Points expire this many months after being earned (0 = never). */
   pointsExpiryMonths: v.number(),
   /** Raise limits automatically by the limit-growth rules (off by default). */
@@ -45,8 +50,12 @@ export const vLedgerType = v.union(
   v.literal("repayment"),
   v.literal("waiver"),
   v.literal("reversal"),
-  v.literal("depositAdjustment"),
+  v.literal("depositAdjustment"), // no longer written (Float has no deposits); kept for older rows
 );
+
+/** How the admin sent a resident's money. */
+export const vPaymentMode = v.union(v.literal("upi"), v.literal("cash"), v.literal("bank_transfer"), v.literal("other"));
+export type PaymentMode = Infer<typeof vPaymentMode>;
 
 export const vDrawStatus = v.union(
   v.literal("requested"),

@@ -3,6 +3,7 @@ import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
 import {
   vDrawStatus,
+  vPaymentMode,
   vLedgerType,
   vPerkField,
   vPerkLimit,
@@ -15,7 +16,7 @@ import {
 } from "./lib/validators";
 
 /**
- * Float: deposit-backed pocket money for PG residents, with points and a
+ * Float: pocket money for PG residents, with points and a
  * perk store.
  *
  * Two roles only: admin and resident. Money is integer paise. Times are
@@ -90,15 +91,18 @@ export default defineSchema({
     .index("by_hubUserId", ["hubUserId"])
     .index("by_role", ["role"]),
 
-  /** One per resident account: their PG details, deposit and limit. */
+  /** One per resident account: their PG details, limit and how to pay them. */
   residents: defineTable({
     userId: v.id("users"), // unique
     name: v.string(), // kept in step with users.name
     phone: v.string(), // E.164, kept in step with users.phone
     propertyId: v.optional(v.id("properties")),
     roomNumber: v.optional(v.string()),
-    /** The security deposit recorded for them (deposit adjustments are ledger rows). */
-    depositPaise: v.number(),
+    /** No longer used (Float has no deposits). Kept only so older rows stay valid. */
+    depositPaise: v.optional(v.number()),
+    /** Where the admin sends their money: a UPI ID and/or a photo of their UPI QR code. */
+    upiId: v.optional(v.string()),
+    upiQrId: v.optional(v.id("_storage")),
     /** Their own credit limit, set by an admin; absent = the default from Settings. */
     limitPaise: v.optional(v.number()),
     /** Paused: no new draws or redemptions; they can still see and repay. */
@@ -176,6 +180,9 @@ export default defineSchema({
     decidedBy: v.optional(v.id("users")),
     disbursedAt: v.optional(v.number()),
     disbursedBy: v.optional(v.id("users")),
+    /** How the admin sent it. */
+    paymentMode: v.optional(vPaymentMode),
+    /** UTR / reference number (optional). */
     upiRef: v.optional(v.string()),
     note: v.optional(v.string()),
     termsVersion: v.number(),
@@ -247,7 +254,8 @@ export default defineSchema({
   // ---- Points --------------------------------------------------------------
 
   /**
-   * How points are earned (admin-editable). Points are earned only on the
+   * NO LONGER USED (points are now 1 per ₹1 repaid). Kept only so older
+   * saved rules stay valid. Was: how points are earned (admin-editable). Points are earned only on the
    * principal repaid on a statement paid in full by its deadline:
    *   base    pointsPer100: points per ₹100 of principal
    *   early   multiplierPct (200 = 2×) when paid before the statement is made
@@ -280,6 +288,8 @@ export default defineSchema({
     expiresAt: v.optional(v.number()),
     /** Expired: the earned row whose unused points expired. */
     lotId: v.optional(v.id("pointsLedger")),
+    /** Earned: the repayment (ledger row) the points are for. */
+    sourceEntryId: v.optional(v.id("ledgerEntries")),
     /** Refunded: the redeemed row it gives back. */
     refundOf: v.optional(v.id("pointsLedger")),
     redemptionId: v.optional(v.string()),
@@ -361,8 +371,12 @@ export default defineSchema({
         by: v.union(v.literal("resident"), v.literal("admin")),
         byUserId: v.optional(v.id("users")),
         note: v.optional(v.string()),
+        /** A code, link or other details the resident uses to claim the perk. */
+        info: v.optional(v.string()),
       }),
     ),
+    /** The latest code / link / details for the resident (shown prominently). */
+    redeemInfo: v.optional(v.string()),
     /** The points row that paid for it, and the refund (if any). */
     pointsEntryId: v.id("pointsLedger"),
     refundEntryId: v.optional(v.id("pointsLedger")),

@@ -1,14 +1,14 @@
 "use client";
 
-import { Flame, Hourglass } from "lucide-react";
+import { Hourglass } from "lucide-react";
 import { api } from "@convex/_generated/api";
-import { describeRule, PointsHistory, StreakDots } from "@/components/points/points-bits";
+import { PointsHistory } from "@/components/points/points-bits";
 import { Card, CardBody } from "@/components/ui/card";
 import { Icon } from "@/components/ui/icon";
 import { LoadingState } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/ui/states";
 import { useQuery } from "@/lib/convex";
-import { formatShortDate } from "@/lib/format";
+import { formatPaise, formatShortDate } from "@/lib/format";
 
 export default function PointsPage() {
   const p = useQuery(api.points.mine, {});
@@ -24,24 +24,10 @@ export default function PointsPage() {
             <span className="tabular font-serif text-3xl text-primary-text">
               {p.balance.toLocaleString("en-IN")} <span className="text-xl">{name}</span>
             </span>
-          </span>
-          <span className="flex items-center gap-1.5 rounded-full bg-surface px-3 py-1 text-sm font-medium">
-            <Icon icon={Flame} className="size-4 text-chart-owed" />
-            {p.streak} on time in a row
+            <span className="text-sm text-foreground-secondary">Worth {formatPaise(p.balanceValuePaise)}</span>
           </span>
         </CardBody>
       </Card>
-
-      <section aria-labelledby="streak" className="flex flex-col gap-2">
-        <h2 id="streak" className="font-serif text-2xl tracking-tight">
-          Recent statements
-        </h2>
-        <Card>
-          <CardBody>
-            <StreakDots recent={p.recent} name={name} />
-          </CardBody>
-        </Card>
-      </section>
 
       {p.expiring.length > 0 ? (
         <section aria-labelledby="expiring" className="flex flex-col gap-2">
@@ -73,10 +59,13 @@ export default function PointsPage() {
         <Card>
           <CardBody>
             <ul className="flex list-disc flex-col gap-2 pl-5 text-sm">
-              {p.rules.map((r, i) => (
-                <li key={i}>{describeRule(r, name, p.dueDay)}</li>
-              ))}
-              <li>Paid after the deadline: no {name} for that statement, and your streak starts again.</li>
+              <li>
+                Repay money you drew and get the same number of {name}: ₹1,000 repaid = 1,000 {name}. Fees and late fees don&apos;t count.
+              </li>
+              <li>They arrive as soon as the office confirms your payment, any day of the month.</li>
+              <li>
+                1,000 {name} are worth {formatPaise(p.pointValueBasisPoints * 10)} ({(p.pointValueBasisPoints / 100).toLocaleString("en-IN")}% of their number in rupees).
+              </li>
               {p.expiryMonths > 0 ? <li>{name} expire {p.expiryMonths} months after you earn them.</li> : null}
             </ul>
           </CardBody>

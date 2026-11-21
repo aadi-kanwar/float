@@ -16,7 +16,7 @@ import { friendlyError } from "@/lib/errors";
 import { addMonths, todayIn } from "@/lib/format";
 
 const KINDS = [
-  { kind: "ledger" as const, label: "Money ledger", hint: "Every draw, fee, late fee, payment, waiver, correction and deposit settlement." },
+  { kind: "ledger" as const, label: "Money ledger", hint: "Every draw, fee, late fee, payment, waiver and correction." },
   { kind: "statements" as const, label: "Statements", hint: "Each statement's figures as they were when it was made." },
   { kind: "points" as const, label: "Points ledger", hint: "Every points change: earned, spent, given back, expired, by the office." },
   { kind: "redemptions" as const, label: "Redemptions", hint: "Every perk redeemed, its status and the answers given." },

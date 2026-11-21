@@ -6,18 +6,6 @@ import { Icon } from "@/components/ui/icon";
 import { formatDay, formatPaise, formatWhen } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
-type RuleView = { type: "base" | "early" | "streak"; pointsPer100: number | null; multiplierPct: number | null; streakLength: number | null };
-
-const times = (pct: number | null) => `${((pct ?? 100) / 100).toLocaleString("en-IN", { maximumFractionDigits: 2 })}×`;
-
-/** A rule in plain words, using the admin's name for the points. */
-export function describeRule(r: RuleView, name: string, dueDay?: number): string {
-  if (r.type === "base")
-    return `${r.pointsPer100 ?? 0} ${name} for every ₹100 you draw and repay in full by the deadline${dueDay ? ` (the ${dueDay}th)` : ""}. Fees don't count.`;
-  if (r.type === "early") return `${times(r.multiplierPct)} ${name} if you pay before the statement is made (in the same month).`;
-  return `${times(r.multiplierPct)} ${name} once ${r.streakLength} statements in a row are paid on time.`;
-}
-
 const DOT: Record<StatementStatus, { cls: string; icon: typeof Check; label: string }> = {
   paid_early: { cls: "bg-success text-white", icon: Zap, label: "Paid early" },
   paid_on_time: { cls: "bg-chart-available text-white", icon: Check, label: "Paid on time" },

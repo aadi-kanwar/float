@@ -8,6 +8,7 @@ import { AdminHubLink, SignOutButton, useMe } from "./session";
 import { ThemeToggle } from "@/components/app/theme-toggle";
 import { namedNav } from "@/components/nav/nav-items";
 import { NotificationBell } from "./notification-bell";
+import { BackButton } from "@/components/nav/back-button";
 
 /**
  * Frame for resident screens (phone-first): app name on top, the bottom
@@ -61,6 +62,7 @@ export function ResidentShell({
       }
     >
       <main className="mx-auto flex min-h-full w-full max-w-lg flex-col gap-6 px-4 py-6">
+        {nav ? <BackButton tabs={RESIDENT_NAV} home="/me" /> : null}
         {children}
       </main>
     </AppFrame>

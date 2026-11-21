@@ -9,7 +9,6 @@ import {
   FileText,
   Gift,
   HandCoins,
-  Landmark,
   Send,
   UserPlus,
   type LucideIcon,
@@ -73,13 +72,6 @@ export const KINDS: {
     label: "Payment",
     icon: ArrowDownToLine,
     color: "bg-chart-repaid",
-  },
-  {
-    kind: "deposit_settled",
-    label: "Settled from deposit",
-    icon: Landmark,
-    color: "bg-chart-repaid",
-    hatched: true,
   },
   {
     kind: "statement",

@@ -25,37 +25,26 @@ import { ReasonDialog } from "./reason-dialog";
 /** A resident's money on their admin page: figures, overrides, statements and the ledger. */
 export function ResidentMoney({
   residentId,
-  recordedDepositPaise,
   ownLimit,
   actions,
 }: {
   residentId: Id<"residents">;
-  recordedDepositPaise: number;
   ownLimit: boolean;
   actions?: React.ReactNode;
 }) {
   const a = useQuery(api.money.residentAccount, { residentId });
-  const settle = useMutation(api.money.settleFromDeposit);
   const reverse = useMutation(api.money.reverse);
   if (a === undefined) return <LoadingState rows={4} />;
   return (
     <>
-      <dl className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+      <dl className="grid grid-cols-2 gap-3 sm:grid-cols-3">
         <Stat label="Owes" value={formatPaise(a.outstandingPaise)} emphasis />
         <Stat label="Overdue" value={formatPaise(a.overduePaise)} warn={a.overdue} />
-        <Stat label="Deposit left" value={formatPaise(a.depositBalancePaise)} hint={`Recorded ${formatPaise(recordedDepositPaise)}`} />
         <Stat label="Can draw now" value={formatPaise(a.availablePaise)} hint={`Limit ${formatPaise(a.limitPaise)}${ownLimit ? " (set for them)" : ""}`} />
       </dl>
       <Card>
         <CardBody className="flex flex-wrap gap-2">
           <RecordPayment residentId={residentId} />
-          <ReasonDialog
-            trigger={<Button variant="secondary">Settle from deposit</Button>}
-            title="Settle dues from the deposit"
-            description={`They owe ${formatPaise(a.outstandingPaise)}; ${formatPaise(a.depositBalancePaise)} of the deposit is left.`}
-            amount={{ label: "Amount (₹)", initial: Math.floor(Math.min(a.outstandingPaise, a.depositBalancePaise) / 100) }}
-            onSave={(rupees, reason) => settle({ residentId, amountRupees: rupees ?? 0, reason })}
-          />
           {a.waivable.length > 0 ? <WaiveDialog residentId={residentId} waivable={a.waivable} /> : null}
           {actions}
         </CardBody>
@@ -169,7 +158,7 @@ function RecordPayment({ residentId }: { residentId: Id<"residents"> }) {
           <Field id="rec-amount" label="Amount (₹)">
             {(p) => <Input {...p} inputMode="numeric" value={amount} onChange={(e) => setAmount(e.target.value.replace(/[^\d]/g, ""))} required />}
           </Field>
-          <Field id="rec-ref" label="UPI reference (optional)">
+          <Field id="rec-ref" label="UTR / reference (optional)">
             {(p) => <Input {...p} value={ref} onChange={(e) => setRef(e.target.value)} maxLength={60} />}
           </Field>
           <DialogFooter>

@@ -4,12 +4,11 @@
  * Overrides each need a reason and are audit-logged:
  * - waive a fee or late fee (whole or part) on one month
  * - reverse a ledger row (a new reversing row; history is never edited)
- * - settle dues from the resident's deposit
  */
 import { v } from "convex/values";
 import type { Doc, Id } from "./_generated/dataModel";
 import type { QueryCtx } from "./_generated/server";
-import { accountSummary, notify, type Summary } from "./lib/account";
+import { accountSummary, type Summary } from "./lib/account";
 import { requireReason, writeAudit } from "./lib/audit";
 import { appError } from "./lib/errors";
 import { adminMutation, adminQuery, residentMutation, residentQuery } from "./lib/functions";
@@ -25,7 +24,6 @@ function headline(s: Summary) {
   return {
     outstandingPaise: s.outstandingPaise,
     creditBalancePaise: s.creditBalancePaise,
-    depositBalancePaise: s.depositBalancePaise,
     limitPaise: s.limitPaise,
     pendingDrawsPaise: s.pendingDrawsPaise,
     principalOwedPaise: s.principalOwedPaise,
@@ -76,7 +74,6 @@ export const mySummary = residentQuery({
     return {
       ...headline(s),
       pendingClaimsPaise: pendingClaims,
-      recordedDepositPaise: resident.depositPaise,
       paused: resident.paused,
       frozen: settings.freezeWhenOverdue && s.overdue,
       dueDay: settings.dueDayOfMonth,
@@ -210,48 +207,6 @@ export const reverse = adminMutation({
   },
 });
 
-/** Settles dues from the deposit (records it; the deposit left goes down). */
-export const settleFromDeposit = adminMutation({
-  args: { residentId: v.id("residents"), amountRupees: v.number(), reason: v.string() },
-  handler: async (ctx, args) => {
-    const reason = requireReason(args.reason);
-    const resident = await loadResident(ctx, args.residentId);
-    const s = await accountSummary(ctx, resident, await currentSettings(ctx));
-    const amountPaise = rupeesToPaise(args.amountRupees);
-    if (amountPaise <= 0) throw appError("INVALID_INPUT", "Enter an amount.");
-    if (amountPaise > s.outstandingPaise) throw appError("INVALID_INPUT", `They owe ${formatPaise(s.outstandingPaise)}.`);
-    if (amountPaise > s.depositBalancePaise) throw appError("INVALID_INPUT", `Only ${formatPaise(s.depositBalancePaise)} of the deposit is left.`);
-    const now = Date.now();
-    const id = await ctx.db.insert("ledgerEntries", {
-      residentId: resident._id,
-      type: "depositAdjustment",
-      amountPaise,
-      effectiveAt: now,
-      createdAt: now,
-      createdBy: ctx.admin.userId,
-      note: reason,
-    });
-    const after = s.depositBalancePaise - amountPaise;
-    await writeAudit(ctx, {
-      actorUserId: ctx.admin.userId,
-      action: "deposit.settled",
-      entityType: "ledgerEntries",
-      entityId: id,
-      residentId: resident._id,
-      reason,
-      metadata: { amountPaise, depositBefore: s.depositBalancePaise, depositAfter: after },
-    });
-    await notify(ctx, resident._id, {
-      kind: "deposit_settled",
-      title: "Dues settled from your deposit",
-      body: `${formatPaise(amountPaise)} of your dues was settled from your deposit. Deposit left: ${formatPaise(after)}.`,
-      href: "/me/activity",
-    });
-    await afterCredit(ctx, resident._id, ctx.admin.userId);
-    return { depositBalancePaise: after };
-  },
-});
-
 // ---- Notifications (residents) ---------------------------------------------
 
 export const myNotifications = residentQuery({
@@ -333,7 +288,7 @@ export const overview = adminQuery({
       const bucket = series.get(istMonth(e.effectiveAt));
       if (!bucket) continue;
       if (e.type === "draw") bucket.drawnPaise += e.amountPaise;
-      if (e.type === "repayment" || e.type === "depositAdjustment") bucket.repaidPaise += e.amountPaise;
+      if (e.type === "repayment") bucket.repaidPaise += e.amountPaise;
       if (e.type === "fee") bucket.feesPaise += e.amountPaise;
       if (e.type === "waiver" && e.bucket === "fee") bucket.feesPaise -= e.amountPaise;
     }
@@ -369,7 +324,6 @@ export type CalendarKind =
   | "draw_sent"
   | "draw_asked"
   | "payment"
-  | "deposit_settled"
   | "statement"
   | "due"
   | "late_fee"
@@ -378,7 +332,7 @@ export type CalendarKind =
 
 /**
  * Everything that happened (or is due) on each day of a month, India time:
- * money sent, draws asked, payments, deposit settlements, statements made,
+ * money sent, draws asked, payments, statements made,
  * deadlines, late fees, new residents (and perks, once the store exists).
  */
 export const calendar = adminQuery({
@@ -410,7 +364,6 @@ export const calendar = adminQuery({
       if (e.effectiveAt < start || e.effectiveAt >= end || reversed.has(e._id) || !inScope(scope, e.residentId)) continue;
       if (e.type === "draw") await push("draw_sent", e.effectiveAt, e.residentId, e.amountPaise, "Money sent");
       else if (e.type === "repayment") await push("payment", e.effectiveAt, e.residentId, e.amountPaise, "Payment");
-      else if (e.type === "depositAdjustment") await push("deposit_settled", e.effectiveAt, e.residentId, e.amountPaise, "Settled from deposit");
       else if (e.type === "lateFee") {
         const day = e.forDate ?? istDate(e.effectiveAt);
         const x = lateByDay.get(day) ?? { count: 0, amount: 0 };

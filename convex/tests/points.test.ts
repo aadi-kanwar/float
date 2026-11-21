@@ -1,12 +1,12 @@
 /// <reference types="vite/client" />
 import { describe, expect, test } from "vitest";
 import { api, internal } from "../_generated/api";
-import { lots, pointsFor, DEFAULT_RULES } from "../lib/points";
+import { lots, pointsForPrincipal, pointsValuePaise } from "../lib/points";
 import { shiftMonth } from "../lib/time";
 import { createAdmin, createResident, errorCode, setIndiaTime, setupTest, type Admin, type Resident, type T } from "./harness.test-utils";
 
 async function ready(t: T, admin: Admin): Promise<Resident> {
-  const r = await createResident(t, admin, { depositRupees: 10_000 });
+  const r = await createResident(t, admin);
   await r.as.mutation(api.terms.accept, { version: 0 });
   return r;
 }
@@ -48,53 +48,59 @@ async function cycle(t: T, admin: Admin, r: Resident, month: string, rupees: num
 
 const balance = async (r: Resident) => (await r.as.query(api.points.mine, {})).balance;
 const earned = async (r: Resident) =>
-  (await r.as.query(api.points.mine, {})).history.filter((h) => h.type === "earned").map((h) => [h.statementMonth, h.points]);
+  (await r.as.query(api.points.mine, {})).history.filter((h) => h.type === "earned").map((h) => h.points);
 
-describe("6. points", () => {
-  test("the formula: per ₹100 of principal, early and streak multipliers multiply", () => {
-    expect(pointsFor(100_000, false, 1, DEFAULT_RULES).points).toBe(50);
-    expect(pointsFor(100_000, true, 1, DEFAULT_RULES).points).toBe(100);
-    expect(pointsFor(100_000, false, 3, DEFAULT_RULES).points).toBe(62); // 62.5
-    expect(pointsFor(100_000, false, 6, DEFAULT_RULES).points).toBe(75);
-    expect(pointsFor(100_000, true, 6, DEFAULT_RULES).points).toBe(150);
-    expect(pointsFor(15_000, false, 1, DEFAULT_RULES).points).toBe(7); // ₹150 -> 7.5
+describe("6. points: 1 per ₹1 of drawn money repaid, live", () => {
+  test("the formula", () => {
+    expect(pointsForPrincipal(100_000)).toBe(1000); // ₹1,000 -> 1,000 points
+    expect(pointsForPrincipal(15_050)).toBe(150); // whole rupees only
+    expect(pointsValuePaise(1000, 100)).toBe(1000); // 1,000 points at 1% of ₹1 = ₹10
+    expect(pointsValuePaise(1000, 250)).toBe(2500);
   });
 
-  test("earned on repaid principal only (not the fee), when the admin confirms an on-time payment", async () => {
+  test("given as soon as a payment is confirmed, any day; fees never earn", async () => {
     const t = await setupTest("2026-12-01");
     const admin = await createAdmin(t);
     const r = await ready(t, admin);
-    await cycle(t, admin, r, "2027-01", 1000, "onTime");
-    expect(await earned(r)).toEqual([["2027-01", 50]]); // ₹1,050 paid, points on ₹1,000
-    // Confirming again can't happen, and re-running the jobs gives nothing more.
-    await t.mutation(internal.statements.dailyJob, {});
-    expect(await balance(r)).toBe(50);
+    setIndiaTime("2027-01-10T12:00:00");
+    const id = await r.as.mutation(api.draws.request, { amountRupees: 1000 });
+    await admin.as.mutation(api.draws.markDisbursed, { drawRequestId: id });
+    setIndiaTime("2027-01-12T12:00:00");
+    let claimId = await r.as.mutation(api.repayments.claim, { amountRupees: 500 });
+    await admin.as.mutation(api.repayments.confirm, { claimId });
+    expect(await balance(r)).toBe(450); // ₹50 fee paid first, then ₹450 of the draw
+    setIndiaTime("2027-01-20T12:00:00");
+    claimId = await r.as.mutation(api.repayments.claim, { amountRupees: 550 });
+    await admin.as.mutation(api.repayments.confirm, { claimId });
+    expect(await earned(r)).toEqual([550, 450]);
+    // Jobs and statements give nothing more.
+    setIndiaTime("2027-01-31T23:59:00");
+    await t.mutation(internal.statements.monthEndJob, {});
+    expect(await balance(r)).toBe(1000);
+    const notes = await r.as.query(api.money.myNotifications, {});
+    expect(notes.map((n) => n.title)).toContain("You earned 450 Points");
   });
 
-  test("paid before the statement is made: early bonus", async () => {
+  test("on time, early and late payments all earn the drawn amount (late fees don't)", async () => {
     const t = await setupTest("2026-12-01");
     const admin = await createAdmin(t);
     const r = await ready(t, admin);
     await cycle(t, admin, r, "2027-01", 1000, "early");
-    expect(await earned(r)).toEqual([["2027-01", 100]]);
+    await cycle(t, admin, r, "2027-02", 1000, "onTime");
+    await cycle(t, admin, r, "2027-03", 1000, "late");
+    expect(await earned(r)).toEqual([1000, 1000, 1000]);
   });
 
-  test("streaks of 3 and 6; paid late gives 0 and resets the streak", async () => {
+  test("what the points are worth follows the setting", async () => {
     const t = await setupTest("2026-12-01");
     const admin = await createAdmin(t);
     const r = await ready(t, admin);
-    const months = ["2027-01", "2027-02", "2027-03", "2027-04", "2027-05", "2027-06"];
-    for (const m of months) await cycle(t, admin, r, m, 1000, "onTime");
-    expect(await earned(r)).toEqual(
-      [["2027-06", 75], ["2027-05", 62], ["2027-04", 62], ["2027-03", 62], ["2027-02", 50], ["2027-01", 50]],
-    );
-    expect((await r.as.query(api.points.mine, {})).streak).toBe(6);
-    await cycle(t, admin, r, "2027-07", 1000, "late");
-    expect((await r.as.query(api.points.mine, {})).streak).toBe(0);
-    await cycle(t, admin, r, "2027-08", 1000, "onTime");
-    const all = await earned(r);
-    expect(all.find(([m]) => m === "2027-07")).toBeUndefined();
-    expect(all[0]).toEqual(["2027-08", 50]); // streak back to 1: no multiplier
+    await admin.as.mutation(api.points.adjust, { residentId: r.residentId, points: 1000, reason: "Test" });
+    expect((await r.as.query(api.points.mine, {})).balanceValuePaise).toBe(1000);
+    const s = await admin.as.query(api.settings.get, {});
+    await admin.as.mutation(api.settings.save, { values: { ...s.values, pointValueBasisPoints: 250 }, expectedVersion: s.version });
+    expect((await r.as.query(api.points.mine, {})).balanceValuePaise).toBe(2500);
+    expect(await errorCode(admin.as.mutation(api.settings.save, { values: { ...s.values, pointValueBasisPoints: 20_000 }, expectedVersion: 1 }))).toBe("INVALID_INPUT");
   });
 
   test("a reversed payment takes the points back", async () => {
@@ -102,7 +108,7 @@ describe("6. points", () => {
     const admin = await createAdmin(t);
     const r = await ready(t, admin);
     await cycle(t, admin, r, "2027-01", 1000, "onTime");
-    expect(await balance(r)).toBe(50);
+    expect(await balance(r)).toBe(1000);
     const account = await admin.as.query(api.money.residentAccount, { residentId: r.residentId });
     const payment = account.ledger.find((e) => e.type === "repayment")!;
     setIndiaTime("2027-02-10T12:00:00");
@@ -114,13 +120,13 @@ describe("6. points", () => {
     const t = await setupTest("2026-12-01");
     const admin = await createAdmin(t);
     const r = await ready(t, admin);
-    await cycle(t, admin, r, "2027-01", 1000, "onTime"); // 50 points earned on 3 Feb 2027
-    await admin.as.mutation(api.points.adjust, { residentId: r.residentId, points: -20, reason: "Spent at the desk" });
+    await cycle(t, admin, r, "2027-01", 1000, "onTime"); // 1,000 points earned on 3 Feb 2027
+    await admin.as.mutation(api.points.adjust, { residentId: r.residentId, points: -200, reason: "Spent at the desk" });
     const mine = await r.as.query(api.points.mine, {});
-    expect(mine.expiring).toEqual([{ points: 30, expiresAt: new Date("2028-02-03T12:00:00+05:30").getTime() }]);
+    expect(mine.expiring).toEqual([{ points: 800, expiresAt: new Date("2028-02-03T12:00:00+05:30").getTime() }]);
     setIndiaTime("2028-02-03T00:05:00");
     await t.mutation(internal.statements.dailyJob, {});
-    expect(await balance(r)).toBe(30);
+    expect(await balance(r)).toBe(800);
     setIndiaTime("2028-02-04T00:05:00");
     await t.mutation(internal.statements.dailyJob, {});
     await t.mutation(internal.statements.dailyJob, {});
@@ -146,27 +152,12 @@ describe("6. points", () => {
     await admin.as.mutation(api.points.adjust, { residentId: r.residentId, points: 30, reason: "Helped at Diwali" });
     expect(await errorCode(admin.as.mutation(api.points.adjust, { residentId: r.residentId, points: -31, reason: "Too much" }))).toBe("INVALID_INPUT");
     expect(await errorCode(r.as.mutation(api.points.adjust, { residentId: r.residentId, points: 100, reason: "Me" }))).toBe("FORBIDDEN");
-    expect(await errorCode(r.as.mutation(api.points.saveRule, { type: "base", pointsPer100: 100 }))).toBe("FORBIDDEN");
     expect(await errorCode(r.as.query(api.points.residentPoints, { residentId: r.residentId }))).toBe("FORBIDDEN");
     expect(await balance(r)).toBe(30);
     const audit = await t.run((ctx) => ctx.db.query("auditLog").collect());
     expect(audit.find((a) => a.action === "points.granted")?.metadata).toMatchObject({ before: 0, after: 30 });
   });
 
-  test("admin edits, disables and reorders earn rules; new rules apply from then on", async () => {
-    const t = await setupTest("2026-12-01");
-    const admin = await createAdmin(t);
-    const r = await ready(t, admin);
-    await cycle(t, admin, r, "2027-01", 1000, "onTime");
-    const rules = await admin.as.query(api.points.rules, {});
-    expect(rules.map((x) => x.type)).toEqual(["base", "early", "streak", "streak"]);
-    await admin.as.mutation(api.points.setRuleEnabled, { index: 1, enabled: false }); // no early bonus
-    await admin.as.mutation(api.points.moveRule, { index: 3, by: -1 });
-    await admin.as.mutation(api.points.saveRule, { index: 0, type: "base", pointsPer100: 10 });
-    expect((await admin.as.query(api.points.rules, {})).map((x) => x.streakLength)).toEqual([null, null, 6, 3]);
-    await cycle(t, admin, r, "2027-02", 1000, "early");
-    expect(await earned(r)).toEqual([["2027-02", 100], ["2027-01", 50]]); // 10 per ₹100, no early 2×
-  });
 });
 
 describe("limit growth", () => {

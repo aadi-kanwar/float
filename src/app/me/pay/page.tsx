@@ -53,7 +53,7 @@ export default function PayPage() {
         <Field id="pay-amount" label="Amount paid (₹)">
           {(f) => <Input {...f} inputMode="numeric" value={value} onChange={(e) => setAmount(e.target.value.replace(/[^\d]/g, ""))} className="text-2xl" />}
         </Field>
-        <Field id="pay-ref" label="UPI reference (optional)" hint="The 12-digit number in your UPI app helps the office find it.">
+        <Field id="pay-ref" label="UTR / reference (optional)" hint="The 12-digit UTR in your UPI app helps the office find it.">
           {(f) => <Input {...f} value={ref} onChange={(e) => setRef(e.target.value)} maxLength={60} />}
         </Field>
         <Button type="submit" className="min-h-14" loading={busy} disabled={left === 0}>

@@ -1,6 +1,7 @@
 "use client";
 
 import { useMutation } from "convex/react";
+import { Copy } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
 import { api } from "@convex/_generated/api";
@@ -52,6 +53,7 @@ export default function MyRedemptionsPage() {
                 <p className="text-sm text-foreground-secondary">{r.answers.filter((a) => a.value).map((a) => `${a.label}: ${a.value}`).join(" · ")}</p>
               ) : null}
               <RedemptionTimeline status={r.status} history={r.history} />
+              {r.redeemInfo ? <RedeemInfo info={r.redeemInfo} /> : null}
               {r.fulfilmentNote && r.status !== "rejected" && r.status !== "cancelled" ? (
                 <p className="rounded-sm bg-primary-subtle px-3 py-2 text-sm text-primary-text">{r.fulfilmentNote}</p>
               ) : null}
@@ -80,5 +82,41 @@ export default function MyRedemptionsPage() {
         ))
       )}
     </>
+  );
+}
+
+/** The code / link / details the office gave: big, with Copy, and links clickable. */
+function RedeemInfo({ info }: { info: string }) {
+  const parts = info.split(/(https?:\/\/[^\s]+)/g);
+  return (
+    <div className="flex flex-col gap-2 rounded-md border-2 border-primary-subtle-border bg-primary-subtle p-3">
+      <span className="text-xs font-medium tracking-wide text-primary-text uppercase">Your code / details</span>
+      <p className="font-mono text-lg break-all whitespace-pre-wrap text-foreground">
+        {parts.map((part, i) =>
+          /^https?:\/\//.test(part) ? (
+            <a key={i} href={part} target="_blank" rel="noopener noreferrer" className="text-primary-text underline">
+              {part}
+            </a>
+          ) : (
+            <span key={i}>{part}</span>
+          ),
+        )}
+      </p>
+      <Button
+        variant="secondary"
+        className="self-start"
+        onClick={async () => {
+          try {
+            await navigator.clipboard.writeText(info);
+            toast.success("Copied.");
+          } catch {
+            toast.error("Couldn't copy.");
+          }
+        }}
+      >
+        <Icon icon={Copy} />
+        Copy
+      </Button>
+    </div>
   );
 }

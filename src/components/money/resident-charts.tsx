@@ -66,23 +66,3 @@ export function DueProgress({ s }: { s: Summary }) {
     </Card>
   );
 }
-
-/** The security deposit: what's left and what has been used to settle dues. */
-export function DepositMeter({ s }: { s: Summary }) {
-  const used = Math.max(0, s.recordedDepositPaise - s.depositBalancePaise);
-  return (
-    <Card>
-      <CardBody className="flex flex-col gap-3">
-        <span className="text-sm font-medium">Security deposit {formatPaise(s.recordedDepositPaise)}</span>
-        <SegmentMeter
-          label="Security deposit"
-          totalPaise={s.recordedDepositPaise}
-          segments={[
-            { key: "left", label: "Left", valuePaise: s.depositBalancePaise, color: "bg-primary" },
-            ...(used > 0 ? [{ key: "used", label: "Used to settle dues", valuePaise: used, color: "bg-chart-repaid", hatched: true }] : []),
-          ]}
-        />
-      </CardBody>
-    </Card>
-  );
-}
